@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>回合 TurnDock · 交互原型</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <a class="brand" href="../../README.md" aria-label="回合项目说明"><span class="brandmark" aria-hidden="true">↳</span><strong>回合</strong><span class="brand-en">TurnDock</span></a>
+      <span class="prototype-tag">交互原型</span>
+      <div class="window-actions"><button id="focus-mode" aria-pressed="false">聚焦</button><button id="theme" aria-label="切换为深色主题">深色</button></div>
+    </header>
+    <aside class="sidebar" aria-label="请求列表">
+      <div class="inbox-heading"><h1>收件箱</h1><span id="waiting-count" class="count">3</span></div>
+      <p class="sidebar-intro">你的决定，按你的节奏。</p>
+      <div class="filters" role="group" aria-label="任务筛选"><button id="filter-pending" aria-pressed="true">待回复</button><button id="filter-done" aria-pressed="false">已处理</button></div>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" aria-label="搜索项目或请求" placeholder="搜索项目或请求"></label>
+      <nav id="task-list" aria-label="待处理请求"></nav>
+      <div class="sidebar-bottom"><div class="local-mode"><span class="status-dot" aria-hidden="true"></span><strong>本地演示</strong></div><p>不连接 AI，不发送任何内容。</p><button id="about" class="text-button">原型说明与重置</button></div>
+    </aside>
+    <main id="main" class="workspace">
+      <header class="context-bar"><button id="back" class="back">返回列表</button><div><span id="client" class="client-badge">Codex</span><span id="project" class="project">TurnDock / 设计</span></div><span id="connection" class="connection">模拟等待中</span></header>
+      <section id="reading" class="reading" aria-label="请求内容">
+        <div class="request-meta"><span id="request-kind">设计确认</span><span id="elapsed">等待 8 分钟</span></div>
+        <h2 id="request-title" tabindex="-1">先确认第一版的实现范围</h2>
+        <p id="request-description" class="lead"></p>
+        <section class="context-note" id="context-note"><div class="note-rule"></div><div><h3 id="note-title">已经确定</h3><p id="note-text"></p></div></section>
+        <fieldset id="options"><legend id="option-legend">你希望从哪里开始？<span>单选</span></legend><div id="option-list"></div></fieldset>
+        <details id="details"><summary>查看请求上下文</summary><p id="details-text"></p><code id="request-id"></code></details>
+        <div id="state-notice" class="state-notice" hidden></div>
+      </section>
+      <section class="composer" aria-label="回复编辑器">
+        <div class="composer-heading"><label for="reply">补充回复</label><span id="save-state">草稿仅保存在此浏览器</span></div>
+        <textarea id="reply" rows="3" placeholder="写下你的想法，或补充需要注意的细节…"></textarea>
+        <div id="attachments" class="attachments"></div>
+        <div class="composer-tools"><button id="attach" class="text-button">＋ 添加图片</button><input id="file" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><span id="composer-hint">Enter 换行 · ⌘ / Ctrl + Enter 发送</span></div>
+        <footer class="reply-actions"><div class="secondary-actions"><button id="later">稍后处理</button><button id="decline" class="quiet-danger">拒绝请求</button></div><button id="send" class="primary" disabled>发送回复 <span aria-hidden="true">↵</span></button></footer>
+      </section>
+      <section id="empty" class="empty" hidden><span class="empty-mark" aria-hidden="true">✓</span><h2>这里已经处理好了</h2><p>没有需要回复的请求。你可以回到待回复，或查看已处理记录。</p><button id="show-pending">查看待回复</button></section>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><form method="dialog"><h2 id="dialog-title">原型说明</h2><p id="dialog-body"></p><div class="dialog-actions"><button value="cancel">返回</button><button id="dialog-confirm" class="primary" value="confirm">确定</button></div></form></dialog>
+</body>
+</html>
