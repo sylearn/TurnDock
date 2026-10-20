@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use turndock_core::{
-    Delivery, MessageFormat, OptionSpec, Outcome, Phase, RequestId, Selection, SubmissionId,
+    Check, Delivery, MessageFormat, OptionSpec, Outcome, Phase, RequestId, Selection, SubmissionId,
     ToolKind,
 };
 
@@ -73,6 +73,10 @@ pub struct RequestDetail {
     pub selection: Selection,
     pub allow_text: bool,
     pub allow_images: bool,
+    /// 交接：验证情况。
+    pub checks: Vec<Check>,
+    /// 交接：风险与待定事项。
+    pub risks: Vec<String>,
     pub decision: Option<DecisionView>,
     pub draft: Option<Draft>,
 }

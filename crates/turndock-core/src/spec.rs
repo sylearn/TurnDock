@@ -13,7 +13,10 @@ use crate::limits;
 pub enum ToolKind {
     /// 寸止兼容入口。
     Zhi,
+    /// 中途需要用户做一个决定。
     AskUser,
+    /// 一轮工作结束时的交接：成果、验证、风险与建议的下一步。
+    HandOff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -42,6 +45,57 @@ pub struct OptionSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<String>,
+    /// AI 推荐的选项；每个请求最多一个。
+    #[serde(default)]
+    pub recommended: bool,
+}
+
+/// 交接中的一项验证。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum CheckStatus {
+    /// 已运行并通过。
+    Passed,
+    /// 已运行但失败。
+    Failed,
+    /// 没有运行。
+    NotRun,
+    /// 需要人来看。
+    Manual,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Check {
+    pub label: String,
+    pub status: CheckStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub detail: Option<String>,
+}
+
+/// 建议的下一步（`hand_off` 的参数形式）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct NextStep {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub recommended: bool,
+}
+
+/// `hand_off` 工具的原始参数。
+#[derive(Debug, Clone, Deserialize)]
+pub struct HandOffParams {
+    pub title: String,
+    pub summary: String,
+    #[serde(default)]
+    pub checks: Vec<Check>,
+    #[serde(default)]
+    pub risks: Vec<String>,
+    pub next_steps: Vec<NextStep>,
 }
 
 /// 经过校验的请求规格。只能通过 [`AskSpec::from_zhi`] / [`AskSpec::from_ask_user`] 构造。
@@ -55,6 +109,12 @@ pub struct AskSpec {
     pub selection: Selection,
     pub allow_text: bool,
     pub allow_images: bool,
+    /// 交接：验证情况。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<Check>,
+    /// 交接：风险与待定事项。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub risks: Vec<String>,
 }
 
 /// `zhi` 工具的原始参数（与寸止一致）。
@@ -107,6 +167,14 @@ pub enum SpecError {
     SelectionMismatch,
     #[error("没有选项时必须允许文字或图片回复，否则用户无法回答")]
     NoWayToAnswer,
+    #[error("最多只能有一个推荐选项")]
+    MultipleRecommended,
+    #[error("交接必须有标题")]
+    MissingTitle,
+    #[error("交接需要 1–{} 个建议的下一步", limits::NEXT_STEPS)]
+    BadNextSteps,
+    #[error("验证最多 {} 项，风险最多 {} 项，每项不超过 {max} 个字符", limits::CHECKS, limits::RISKS, max = limits::OPTION_CHARS)]
+    BadHandOffDetail,
 }
 
 impl AskSpec {
@@ -119,6 +187,7 @@ impl AskSpec {
                 id: format!("{}", i + 1),
                 label,
                 description: None,
+                recommended: false,
             })
             .collect::<Vec<_>>();
         let selection = if options.is_empty() {
@@ -140,9 +209,56 @@ impl AskSpec {
             selection,
             allow_text: true,
             allow_images: true,
+            checks: Vec::new(),
+            risks: Vec::new(),
         };
         spec.validate()?;
         Ok(spec)
+    }
+
+    pub fn from_hand_off(p: HandOffParams) -> Result<Self, SpecError> {
+        let title = p.title.trim().to_owned();
+        if title.is_empty() {
+            return Err(SpecError::MissingTitle);
+        }
+        if p.next_steps.is_empty() || p.next_steps.len() > limits::NEXT_STEPS {
+            return Err(SpecError::BadNextSteps);
+        }
+        let spec = Self {
+            tool: ToolKind::HandOff,
+            title: Some(title),
+            message: p.summary,
+            format: MessageFormat::Markdown,
+            options: p
+                .next_steps
+                .into_iter()
+                .map(|n| OptionSpec {
+                    id: n.id,
+                    label: n.label,
+                    description: n
+                        .reason
+                        .map(|r| r.trim().to_owned())
+                        .filter(|r| !r.is_empty()),
+                    recommended: n.recommended,
+                })
+                .collect(),
+            selection: Selection::Single,
+            allow_text: true,
+            allow_images: true,
+            checks: p.checks,
+            risks: p
+                .risks
+                .into_iter()
+                .map(|r| r.trim().to_owned())
+                .filter(|r| !r.is_empty())
+                .collect(),
+        };
+        spec.validate()?;
+        Ok(spec)
+    }
+
+    pub fn recommended(&self) -> Option<&OptionSpec> {
+        self.options.iter().find(|o| o.recommended)
     }
 
     pub fn from_ask_user(p: AskUserParams) -> Result<Self, SpecError> {
@@ -163,6 +279,8 @@ impl AskSpec {
             selection,
             allow_text: p.allow_text,
             allow_images: p.allow_images,
+            checks: Vec::new(),
+            risks: Vec::new(),
         };
         spec.validate()?;
         Ok(spec)
@@ -196,6 +314,25 @@ impl AskSpec {
             if !seen.insert(o.id.as_str()) {
                 return Err(SpecError::DuplicateOptionId(o.id.clone()));
             }
+        }
+        if self.options.iter().filter(|o| o.recommended).count() > 1 {
+            return Err(SpecError::MultipleRecommended);
+        }
+        if self.checks.len() > limits::CHECKS
+            || self.risks.len() > limits::RISKS
+            || self.checks.iter().any(|c| {
+                c.label.trim().is_empty()
+                    || c.label.chars().count() > limits::OPTION_CHARS
+                    || c.detail
+                        .as_ref()
+                        .is_some_and(|d| d.chars().count() > limits::OPTION_CHARS)
+            })
+            || self
+                .risks
+                .iter()
+                .any(|r| r.chars().count() > limits::OPTION_CHARS)
+        {
+            return Err(SpecError::BadHandOffDetail);
         }
         if (self.selection == Selection::None) != self.options.is_empty() {
             return Err(SpecError::SelectionMismatch);
@@ -279,6 +416,7 @@ mod tests {
                     id: id.into(),
                     label: label.into(),
                     description: None,
+                    recommended: false,
                 })
                 .collect(),
             selection,
@@ -319,6 +457,61 @@ mod tests {
             AskSpec::from_ask_user(ask(vec![("a", "A")], Some(Selection::None))),
             Err(SpecError::SelectionMismatch)
         );
+    }
+
+    fn hand_off(steps: Vec<(&str, bool)>) -> HandOffParams {
+        HandOffParams {
+            title: "导出脚本完成".into(),
+            summary: "写完了导出脚本。".into(),
+            checks: vec![Check {
+                label: "单元测试".into(),
+                status: CheckStatus::Passed,
+                detail: None,
+            }],
+            risks: vec!["  ".into(), "大文件未测".into()],
+            next_steps: steps
+                .into_iter()
+                .map(|(id, rec)| NextStep {
+                    id: id.into(),
+                    label: format!("做 {id}"),
+                    reason: Some(" 因为 ".into()),
+                    recommended: rec,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn hand_off_builds_single_choice_with_recommendation() {
+        let spec =
+            AskSpec::from_hand_off(hand_off(vec![("a", false), ("b", true)])).expect("valid");
+        assert_eq!(spec.tool, ToolKind::HandOff);
+        assert_eq!(spec.selection, Selection::Single);
+        assert_eq!(spec.recommended().map(|o| o.id.as_str()), Some("b"));
+        assert_eq!(spec.options[0].description.as_deref(), Some("因为"));
+        assert_eq!(spec.risks, vec!["大文件未测".to_owned()]);
+    }
+
+    #[test]
+    fn hand_off_requires_steps_title_and_one_recommendation() {
+        assert_eq!(
+            AskSpec::from_hand_off(hand_off(vec![])),
+            Err(SpecError::BadNextSteps)
+        );
+        assert_eq!(
+            AskSpec::from_hand_off(hand_off(vec![("a", true), ("b", true)])),
+            Err(SpecError::MultipleRecommended)
+        );
+        let mut p = hand_off(vec![("a", false)]);
+        p.title = " ".into();
+        assert_eq!(AskSpec::from_hand_off(p), Err(SpecError::MissingTitle));
+    }
+
+    #[test]
+    fn old_specs_without_new_fields_still_deserialize() {
+        let old = r#"{"tool":"ask_user","title":null,"message":"m","format":"markdown","options":[{"id":"a","label":"A"}],"selection":"single","allow_text":true,"allow_images":true}"#;
+        let spec: AskSpec = serde_json::from_str(old).expect("compatible");
+        assert!(spec.checks.is_empty() && !spec.options[0].recommended);
     }
 
     #[test]

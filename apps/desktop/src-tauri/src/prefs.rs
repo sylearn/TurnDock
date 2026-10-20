@@ -24,8 +24,8 @@ impl Default for Prefs {
         Self {
             quick_replies: vec![
                 "继续".into(),
-                "按最佳实践继续".into(),
-                "先停下，总结目前的进展和下一步计划".into(),
+                "先补测试，再继续".into(),
+                "先停下，用 hand_off 交接目前的进展".into(),
             ],
             shortcut: "Control+Alt+Space".into(),
             notify: true,

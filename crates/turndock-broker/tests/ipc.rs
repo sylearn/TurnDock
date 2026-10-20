@@ -133,11 +133,13 @@ fn choose() -> AskSpec {
                 id: "a".into(),
                 label: "方案 A".into(),
                 description: None,
+                recommended: false,
             },
             OptionSpec {
                 id: "b".into(),
                 label: "方案 B".into(),
                 description: None,
+                recommended: false,
             },
         ],
         selection: Some(Selection::Single),

@@ -16,7 +16,7 @@ use serde_json::json;
 use tracing::{debug, info};
 use turndock_core::ipc::{BridgeFrame, BrokerFrame, ClientInfo};
 use turndock_core::{
-    AskSpec, AskUserParams, CallOutcome, CallResult, RequestId, ToolKind, ZhiParams,
+    AskSpec, AskUserParams, CallOutcome, CallResult, HandOffParams, RequestId, ToolKind, ZhiParams,
 };
 
 use crate::format;
@@ -28,12 +28,14 @@ const RECONNECT_EVERY: Duration = Duration::from_millis(500);
 const MIN_WAIT: Duration = Duration::from_millis(1500);
 
 pub const INSTRUCTIONS: &str = "\
-TurnDock（回合）让你在需要用户决定时停下来等待，而不是自作主张或提前结束。
-- 需求不明确、有多个可行方案、即将做有影响的操作时，用 ask_user 询问，并给出选项。
-- 一段工作完成、准备结束本轮回复之前，用 ask_user（或 zhi）请用户确认下一步；在得到明确答复前不要结束回合。
+TurnDock（回合）是你和用户之间的交接点：每做完一轮工作，把成果和建议的下一步交给用户，由用户决定方向。
+- 做了实际工作的一轮（改了文件、运行了命令、完成了任务）结束前，调用 hand_off：一句话标题、做了什么、\
+验证情况（如实区分 passed / failed / not_run / manual）、风险与待定事项、2–4 个建议的下一步并标出一个推荐及理由。\
+在用户回复前不要结束这一轮。纯问答不需要交接。
+- 工作中途遇到需求不明确、多个可行方案、或即将做有影响的操作时，用 ask_user 询问，给出选项并标出推荐。
 - 工具返回 pending 时，用户只是还没有回复：立即调用 await_reply(request_id) 继续等待。这不是同意。
 - 用户拒绝、关闭、取消或超时，都表示没有获得同意：停止相关操作，在对话中说明。
-- 只通过这些工具向用户提问，不要在普通回复里提问后直接结束。";
+- 建议要具体、可执行，说明为什么；不要用“继续优化”这类空话凑数。";
 
 #[derive(Clone)]
 pub struct Server {
@@ -221,10 +223,53 @@ fn schema(v: serde_json::Value) -> Arc<JsonObject> {
 }
 
 fn tools() -> Vec<Tool> {
+    let hand_off = Tool::new(
+        "hand_off",
+        "一轮工作结束时交接给用户：说明做了什么、验证到什么程度、有什么风险，并给出建议的下一步供用户选择。\
+         用户选定方向（或给出新指示）后返回。返回 pending 时调用 await_reply 继续等待。",
+        schema(json!({
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "一句话说明这一轮的结果，例如“导出脚本完成，测试通过”（最多 160 字）"},
+                "summary": {"type": "string", "description": "做了什么：改动、关键决定、产出位置。Markdown，简洁"},
+                "checks": {
+                    "type": "array",
+                    "description": "验证情况。如实填写：没跑就是 not_run，需要人看就是 manual",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string", "description": "例如“单元测试”“类型检查”“手动打开页面”"},
+                            "status": {"type": "string", "enum": ["passed", "failed", "not_run", "manual"]},
+                            "detail": {"type": "string", "description": "可选，例如“42/42”或失败原因"}
+                        },
+                        "required": ["label", "status"]
+                    }
+                },
+                "risks": {"type": "array", "items": {"type": "string"}, "description": "风险、假设与待定事项"},
+                "next_steps": {
+                    "type": "array",
+                    "description": "2–4 个具体可执行的下一步；恰好一个 recommended 为 true",
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "label": {"type": "string", "description": "下一步做什么"},
+                            "reason": {"type": "string", "description": "为什么值得做、代价或影响"},
+                            "recommended": {"type": "boolean"}
+                        },
+                        "required": ["id", "label"]
+                    }
+                }
+            },
+            "required": ["title", "summary", "next_steps"]
+        })),
+    );
     let ask_user = Tool::new(
         "ask_user",
-        "向用户提问并等待回复：确认下一步、在多个方案中选择、补充信息。\
-         一段工作完成、准备结束本轮之前也应调用它。\
+        "工作中途向用户提问并等待回复：在多个方案中选择、确认有影响的操作、补充信息。\
+         一轮工作结束时请改用 hand_off。\
          返回 outcome：answered（已回复）/ declined（拒绝）/ pending（尚未回复，需调用 await_reply 继续等）/ \
          dismissed、cancelled、expired（未获同意）。",
         schema(json!({
@@ -241,7 +286,8 @@ fn tools() -> Vec<Tool> {
                         "properties": {
                             "id": {"type": "string"},
                             "label": {"type": "string"},
-                            "description": {"type": "string"}
+                            "description": {"type": "string"},
+                            "recommended": {"type": "boolean", "description": "你推荐的选项，最多一个"}
                         },
                         "required": ["id", "label"]
                     }
@@ -281,7 +327,7 @@ fn tools() -> Vec<Tool> {
             "required": ["message"]
         })),
     );
-    [ask_user, await_reply, zhi]
+    [hand_off, ask_user, await_reply, zhi]
         .into_iter()
         .map(|t| {
             t.with_annotations(
@@ -331,6 +377,26 @@ impl ServerHandler for Server {
         let result = match request.name.as_ref() {
             "zhi" => match parse::<ZhiParams>(request.arguments)
                 .and_then(|p| AskSpec::from_zhi(p).map_err(|e| e.to_string()))
+            {
+                Ok(spec) => {
+                    let tool = spec.tool;
+                    self.run(
+                        &context,
+                        client,
+                        tool,
+                        |call, wait_ms| BridgeFrame::Ask {
+                            call,
+                            spec,
+                            wait_ms,
+                        },
+                        None,
+                    )
+                    .await
+                }
+                Err(e) => format::error(e),
+            },
+            "hand_off" => match parse::<HandOffParams>(request.arguments)
+                .and_then(|p| AskSpec::from_hand_off(p).map_err(|e| e.to_string()))
             {
                 Ok(spec) => {
                     let tool = spec.tool;
@@ -420,6 +486,6 @@ mod tests {
     #[test]
     fn tool_list_is_stable() {
         let names: Vec<_> = tools().into_iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(names, ["ask_user", "await_reply", "zhi"]);
+        assert_eq!(names, ["hand_off", "ask_user", "await_reply", "zhi"]);
     }
 }

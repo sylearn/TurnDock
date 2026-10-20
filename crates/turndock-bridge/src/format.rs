@@ -60,6 +60,21 @@ fn reply(id: &RequestId, tool: ToolKind, p: ReplyPayload) -> CallToolResult {
             }
             parts.join("\n\n")
         }
+        (ToolKind::HandOff, Outcome::Answered) => {
+            let mut t = match (p.selected_labels.first(), p.selected_ids.first()) {
+                (Some(l), Some(i)) => format!("用户选定了下一步：{l}（{i}）。按这个方向继续。"),
+                _ => String::from("用户没有选用建议的下一步，给出了新的指示。按用户的指示继续。"),
+            };
+            if !p.text.trim().is_empty() {
+                t.push_str("\n用户补充：");
+                t.push_str(p.text.trim());
+            }
+            if !p.images.is_empty() {
+                t.push_str(&format!("\n附图：{} 张", p.images.len()));
+            }
+            t.push_str("\n这一轮结束时，再用 hand_off 交接。");
+            t
+        }
         (ToolKind::AskUser, Outcome::Answered) => {
             let mut t = String::from("用户已回复。");
             if !p.selected_labels.is_empty() {
@@ -83,7 +98,7 @@ fn reply(id: &RequestId, tool: ToolKind, p: ReplyPayload) -> CallToolResult {
     };
     content.push(ContentBlock::text(text));
     let mut result = CallToolResult::success(content);
-    if tool == ToolKind::AskUser {
+    if tool != ToolKind::Zhi {
         result.structured_content = Some(json!({
             "outcome": match p.outcome { Outcome::Answered => "answered", Outcome::Declined => "declined" },
             "request_id": id.as_str(),
@@ -128,7 +143,7 @@ fn with_status(
     } else {
         CallToolResult::success(content)
     };
-    if tool == ToolKind::AskUser {
+    if tool != ToolKind::Zhi {
         r.structured_content = Some(json!({ "outcome": status, "request_id": id.as_str() }));
     }
     r
@@ -204,6 +219,30 @@ mod tests {
             Some("pending")
         );
         assert_ne!(r.is_error, Some(true));
+    }
+
+    #[test]
+    fn hand_off_reply_names_the_chosen_step() {
+        let id = RequestId::new();
+        let mut p = payload(Outcome::Answered);
+        p.selected_ids = vec!["tests".into()];
+        p.selected_labels = vec!["补测试".into()];
+        let r = outcome(
+            &id,
+            CallOutcome {
+                tool: ToolKind::HandOff,
+                result: CallResult::Reply(p),
+            },
+        );
+        let t = text_of(&r);
+        assert!(t.contains("补测试（tests）"), "{t}");
+        assert!(t.contains("hand_off"), "{t}");
+        assert_eq!(
+            r.structured_content
+                .as_ref()
+                .and_then(|v| v["selected_ids"][0].as_str()),
+            Some("tests")
+        );
     }
 
     #[test]

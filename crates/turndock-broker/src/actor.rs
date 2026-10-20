@@ -614,6 +614,8 @@ impl Actor {
             selection: row.spec.selection,
             allow_text: row.spec.allow_text,
             allow_images: row.spec.allow_images,
+            checks: row.spec.checks.clone(),
+            risks: row.spec.risks.clone(),
             decision: row.decision.as_ref().map(|d| DecisionView {
                 outcome: d.outcome,
                 selected_ids: d.selected_ids.clone(),

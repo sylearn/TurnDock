@@ -10,5 +10,8 @@ pub mod state;
 
 pub use ids::{CallRef, ConnectionId, RequestId, SubmissionId};
 pub use reply::{CallOutcome, CallResult, ImagePayload, Outcome, ReplyPayload};
-pub use spec::{AskSpec, AskUserParams, MessageFormat, OptionSpec, Selection, ToolKind, ZhiParams};
+pub use spec::{
+    AskSpec, AskUserParams, Check, CheckStatus, HandOffParams, MessageFormat, OptionSpec,
+    Selection, ToolKind, ZhiParams,
+};
 pub use state::{Delivery, Phase, RequestState};

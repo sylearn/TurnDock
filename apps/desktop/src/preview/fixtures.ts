@@ -35,6 +35,8 @@ function make(
     selection: 'none',
     allow_text: true,
     allow_images: true,
+    checks: [],
+    risks: [],
     decision: null,
     draft: null,
     ...rest,
@@ -46,12 +48,20 @@ export function fixtures(now: number): RequestDetail[] {
     make(
       now,
       'a1',
-      { title: '先确认第一版的实现范围', created_at: now - 12 * min },
+      { title: '导出模块完成，CSV 与 JSON 均可用', tool: 'hand_off', project: 'atlas-export', created_at: now - 3 * min },
       {
-        message_html: "<p>协议内核与桌面外壳都已就绪。第一版先把<strong>回复闭环</strong>做稳，还是同时把多项目收件箱做完整？</p>\n<ul>\n<li>已完成：状态机、broker、MCP bridge，<code>cargo test</code> 全部通过</li>\n<li>待定：草稿持久化、图片回复的体验细节</li>\n</ul>\n<pre data-lang=\"rust\"><code class=\"language-rust\"><span class=\"hl-source hl-rust\"><span class=\"hl-comment hl-line hl-documentation hl-rust\"><span class=\"hl-punctuation hl-definition hl-comment hl-rust\">///</span> 用户回复后交给挂着的调用。\n</span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-storage hl-modifier hl-rust\">pub</span> <span class=\"hl-storage hl-type hl-function hl-rust\">fn</span> </span><span class=\"hl-entity hl-name hl-function hl-rust\">decide</span></span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-parameters hl-rust\"><span class=\"hl-punctuation hl-section hl-parameters hl-begin hl-rust\">(</span><span class=\"hl-keyword hl-operator hl-rust\">&amp;</span><span class=\"hl-storage hl-modifier hl-rust\">mut</span> <span class=\"hl-variable hl-parameter hl-rust\">self</span>, <span class=\"hl-variable hl-parameter hl-rust\">submission</span><span class=\"hl-punctuation hl-separator hl-rust\">:</span> SubmissionId</span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-parameters hl-rust\"><span class=\"hl-punctuation hl-section hl-parameters hl-end hl-rust\">)</span></span></span></span><span class=\"hl-meta hl-function hl-rust\"> <span class=\"hl-meta hl-function hl-return-type hl-rust\"><span class=\"hl-punctuation hl-separator hl-rust\">-&gt;</span> <span class=\"hl-meta hl-generic hl-rust\">Result<span class=\"hl-punctuation hl-definition hl-generic hl-begin hl-rust\">&lt;</span>DecideEffect, StateError<span class=\"hl-punctuation hl-definition hl-generic hl-end hl-rust\">&gt;</span></span></span> </span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-begin hl-rust\">{</span>\n    <span class=\"hl-keyword hl-control hl-rust\">if</span> <span class=\"hl-variable hl-language hl-rust\">self</span>.phase <span class=\"hl-keyword hl-operator hl-rust\">!</span><span class=\"hl-keyword hl-operator hl-rust\">=</span> <span class=\"hl-meta hl-path hl-rust\">Phase<span class=\"hl-punctuation hl-accessor hl-rust\">::</span></span>Waiting <span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-begin hl-rust\">{</span>\n        <span class=\"hl-keyword hl-control hl-rust\">return</span> <span class=\"hl-support hl-type hl-rust\">Err</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-begin hl-rust\">(</span><span class=\"hl-meta hl-path hl-rust\">StateError<span class=\"hl-punctuation hl-accessor hl-rust\">::</span></span>NotWaiting<span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-begin hl-rust\">(</span><span class=\"hl-variable hl-language hl-rust\">self</span>.phase</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-end hl-rust\">)</span></span></span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-end hl-rust\">)</span></span><span class=\"hl-punctuation hl-terminator hl-rust\">;</span>\n    </span><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-end hl-rust\">}</span></span>\n    <span class=\"hl-storage hl-type hl-rust\">let</span> retries <span class=\"hl-keyword hl-operator hl-rust\">=</span> <span class=\"hl-constant hl-numeric hl-integer hl-decimal hl-rust\">3</span><span class=\"hl-punctuation hl-terminator hl-rust\">;</span> <span class=\"hl-comment hl-line hl-double-slash hl-rust\"><span class=\"hl-punctuation hl-definition hl-comment hl-rust\">//</span> 最多重试\n</span>    <span class=\"hl-support hl-type hl-rust\">Ok</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-begin hl-rust\">(</span><span class=\"hl-meta hl-path hl-rust\">DecideEffect<span class=\"hl-punctuation hl-accessor hl-rust\">::</span></span>Stored</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-end hl-rust\">)</span></span>\n</span><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-end hl-rust\">}</span></span></span>\n</span></code></pre>",
+        message_html: "<p>新增导出模块，支持 CSV 与 JSON 两种格式，入口在 <code>src/export.rs</code>。</p>\n<ul>\n<li>大于 50MB 的数据改为流式写出，内存占用不随数据量增长</li>\n<li>列名映射改为读取 <code>export.toml</code>，旧的硬编码映射已删除</li>\n<li><code>cargo test</code> 新增 12 个用例</li>\n</ul>\n<pre data-lang=\"rust\"><code class=\"language-rust\"><span class=\"hl-source hl-rust\"><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-storage hl-modifier hl-rust\">pub</span> <span class=\"hl-storage hl-type hl-function hl-rust\">fn</span> </span><span class=\"hl-entity hl-name hl-function hl-rust\">export</span></span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-parameters hl-rust\"><span class=\"hl-punctuation hl-section hl-parameters hl-begin hl-rust\">(</span><span class=\"hl-variable hl-parameter hl-rust\">rows</span><span class=\"hl-punctuation hl-separator hl-rust\">:</span> impl <span class=\"hl-meta hl-generic hl-rust\">Iterator<span class=\"hl-punctuation hl-definition hl-generic hl-begin hl-rust\">&lt;</span>Item = Row<span class=\"hl-punctuation hl-definition hl-generic hl-end hl-rust\">&gt;</span></span>, <span class=\"hl-variable hl-parameter hl-rust\">format</span><span class=\"hl-punctuation hl-separator hl-rust\">:</span> Format, <span class=\"hl-variable hl-parameter hl-rust\">out</span><span class=\"hl-punctuation hl-separator hl-rust\">:</span> <span class=\"hl-keyword hl-operator hl-rust\">&amp;</span><span class=\"hl-storage hl-modifier hl-rust\">mut</span> dyn Write</span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-function hl-parameters hl-rust\"><span class=\"hl-punctuation hl-section hl-parameters hl-end hl-rust\">)</span></span></span></span><span class=\"hl-meta hl-function hl-rust\"> <span class=\"hl-meta hl-function hl-return-type hl-rust\"><span class=\"hl-punctuation hl-separator hl-rust\">-&gt;</span> <span class=\"hl-meta hl-generic hl-rust\">Result<span class=\"hl-punctuation hl-definition hl-generic hl-begin hl-rust\">&lt;</span><span class=\"hl-storage hl-type hl-rust\">usize</span><span class=\"hl-punctuation hl-definition hl-generic hl-end hl-rust\">&gt;</span></span></span> </span><span class=\"hl-meta hl-function hl-rust\"><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-begin hl-rust\">{</span>\n    <span class=\"hl-storage hl-type hl-rust\">let</span> <span class=\"hl-storage hl-modifier hl-rust\">mut</span> n <span class=\"hl-keyword hl-operator hl-rust\">=</span> <span class=\"hl-constant hl-numeric hl-integer hl-decimal hl-rust\">0</span><span class=\"hl-punctuation hl-terminator hl-rust\">;</span>\n    <span class=\"hl-keyword hl-control hl-rust\">for</span> row <span class=\"hl-keyword hl-operator hl-rust\">in</span> rows <span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-begin hl-rust\">{</span>\n        format.<span class=\"hl-support hl-function hl-rust\">write_row</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-begin hl-rust\">(</span>out<span class=\"hl-punctuation hl-separator hl-rust\">,</span> <span class=\"hl-keyword hl-operator hl-rust\">&amp;</span>row</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-end hl-rust\">)</span></span><span class=\"hl-keyword hl-operator hl-rust\">?</span><span class=\"hl-punctuation hl-terminator hl-rust\">;</span> <span class=\"hl-comment hl-line hl-double-slash hl-rust\"><span class=\"hl-punctuation hl-definition hl-comment hl-rust\">//</span> 逐行写出，不缓存全部数据\n</span>        n <span class=\"hl-keyword hl-operator hl-rust\">+</span><span class=\"hl-keyword hl-operator hl-rust\">=</span> <span class=\"hl-constant hl-numeric hl-integer hl-decimal hl-rust\">1</span><span class=\"hl-punctuation hl-terminator hl-rust\">;</span>\n    </span><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-end hl-rust\">}</span></span>\n    <span class=\"hl-support hl-type hl-rust\">Ok</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-begin hl-rust\">(</span>n</span><span class=\"hl-meta hl-group hl-rust\"><span class=\"hl-punctuation hl-section hl-group hl-end hl-rust\">)</span></span>\n</span><span class=\"hl-meta hl-block hl-rust\"><span class=\"hl-punctuation hl-section hl-block hl-end hl-rust\">}</span></span></span>\n</span></code></pre>",
+        checks: [
+          { label: '单元测试', status: 'passed', detail: '54/54 通过' },
+          { label: '类型检查', status: 'passed' },
+          { label: '1GB 以上大文件', status: 'not_run' },
+          { label: 'Excel 打开中文 CSV', status: 'manual', detail: '需要你在 Windows 上确认' },
+        ],
+        risks: ['CSV 默认 UTF-8 无 BOM，旧版 Excel 可能乱码', '流式写出时中途失败会留下半个文件'],
         options: [
-          { id: 'loop', label: '先做可靠的回复闭环', description: '接收、草稿、明确回复，每一步都能追踪' },
-          { id: 'inbox', label: '同时把多项目收件箱做完整', description: '在闭环基础上加入队列、来源与快速面板' },
+          { id: 'bom', label: '给 CSV 加 BOM 并补一个 Excel 兼容测试', description: '唯一需要人工确认的风险，改动小，十分钟内可完成', recommended: true },
+          { id: 'atomic', label: '改为先写临时文件再原子重命名', description: '避免半个文件；需要改动写出流程，约半小时', recommended: false },
+          { id: 'bigfile', label: '补 1GB 大文件压测', description: '验证流式写出的内存表现，运行较慢', recommended: false },
         ],
         selection: 'single',
       },
@@ -71,9 +81,9 @@ export function fixtures(now: number): RequestDetail[] {
       {
         message_html: '',
         options: [
-          { id: '1', label: '继续' },
-          { id: '2', label: '先写文档' },
-          { id: '3', label: '提交代码' },
+          { id: '1', label: '继续', recommended: false },
+          { id: '2', label: '先写文档', recommended: false },
+          { id: '3', label: '提交代码', recommended: false },
         ],
         selection: 'multiple',
         draft: { text: '顺便把 README 的示例更新一下', selected_ids: ['2'] },
@@ -86,8 +96,8 @@ export function fixtures(now: number): RequestDetail[] {
       {
         message_html: '<p>其中 12 处内容完全相同，25 处只有标点差异。合并后保留较新的版本。</p>',
         options: [
-          { id: 'y', label: '合并' },
-          { id: 'n', label: '保留两份' },
+          { id: 'y', label: '合并', recommended: false },
+          { id: 'n', label: '保留两份', recommended: false },
         ],
         selection: 'single',
       },

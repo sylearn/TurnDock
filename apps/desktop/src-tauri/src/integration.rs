@@ -20,12 +20,16 @@ pub struct Integration {
 }
 
 pub const RULES: &str = "\
-## 与用户确认（TurnDock）
+## 与用户交接（TurnDock）
 
-- 需要用户决定时（需求不明确、有多个可行方案、即将做有影响的操作），调用 `ask_user` 并给出选项，不要自作主张。
-- 每完成一段工作、准备结束本轮回复之前，调用 `ask_user` 请用户确认下一步；没有得到明确答复前不要结束回合。
-- 工具返回 pending 时，立即调用 `await_reply` 并传入 request_id 继续等待。
-- pending、超时、取消、关闭都不是同意；用户拒绝时停止相关操作并说明。
+- 做了实际工作的一轮（改了文件、运行了命令、完成了任务）结束前，调用 `hand_off` 交接，在用户回复前不要结束：
+  - title：一句话说明结果；summary：做了什么、关键决定、产出在哪里
+  - checks：如实区分 passed / failed / not_run / manual，没跑就写 not_run
+  - risks：风险、假设与待定事项
+  - next_steps：2–4 个具体可执行的下一步，恰好一个推荐，并写明理由与代价
+- 纯问答不需要交接。工作中途遇到多个可行方案或有影响的操作时，用 `ask_user` 询问并标出推荐。
+- 工具返回 pending 时立即调用 `await_reply` 继续等待；pending、超时、取消、关闭都不是同意。
+- 用户选定方向后按它执行；用户要求先停下时，说明当前状态并等待新的指示。
 ";
 
 fn bridge_path() -> std::path::PathBuf {

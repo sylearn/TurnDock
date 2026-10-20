@@ -108,7 +108,7 @@ async fn lists_tools_with_instructions() {
     );
     let tools = c.list_all_tools().await.expect("tools");
     let names: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names, ["ask_user", "await_reply", "zhi"]);
+    assert_eq!(names, ["hand_off", "ask_user", "await_reply", "zhi"]);
     c.cancel().await.expect("close");
 }
 
@@ -339,5 +339,68 @@ async fn broker_restart_is_transparent_to_waiting_call() {
     let r = r.expect("call");
     assert_ne!(r.is_error, Some(true), "{}", text(&r));
     assert!(text(&r).contains("重启后也能收到"));
+    c.cancel().await.expect("close");
+}
+
+#[tokio::test]
+async fn hand_off_round_trip_with_recommended_step() {
+    let env = start().await;
+    let c = client(&env, "claude-code", 30).await;
+    let call = c.call_tool(CallToolRequestParams::new("hand_off").with_arguments(args(json!({
+        "title": "导出脚本完成，测试通过",
+        "summary": "新增 `export.rs`，支持 CSV 与 JSON。",
+        "checks": [
+            {"label": "单元测试", "status": "passed", "detail": "42/42"},
+            {"label": "大文件导出", "status": "not_run"}
+        ],
+        "risks": ["超过 1GB 的文件未测试"],
+        "next_steps": [
+            {"id": "bigfile", "label": "补大文件测试", "reason": "唯一未验证的路径", "recommended": true},
+            {"id": "docs", "label": "更新 README"}
+        ]
+    }))));
+    let responder = async {
+        let id = wait_for_request(&env).await;
+        let d = env
+            .broker
+            .detail(id.clone())
+            .await
+            .expect("detail")
+            .expect("some");
+        assert_eq!(d.summary.tool, turndock_core::ToolKind::HandOff);
+        assert_eq!(d.heading.as_deref(), Some("导出脚本完成，测试通过"));
+        assert_eq!(d.checks.len(), 2);
+        assert_eq!(d.risks, vec!["超过 1GB 的文件未测试".to_owned()]);
+        assert!(d.options[0].recommended);
+        env.broker
+            .submit(answer(&id, &["bigfile"], "顺便测一下空文件"))
+            .await
+            .expect("submit");
+    };
+    let (r, _) = tokio::join!(call, responder);
+    let r = r.expect("call");
+    let t = text(&r);
+    assert!(
+        t.contains("补大文件测试（bigfile）") && t.contains("空文件"),
+        "{t}"
+    );
+    assert_eq!(r.structured_content.expect("s")["outcome"], "answered");
+    c.cancel().await.expect("close");
+}
+
+#[tokio::test]
+async fn hand_off_without_next_steps_is_rejected() {
+    let env = start().await;
+    let c = client(&env, "codex", 30).await;
+    let r = c
+        .call_tool(
+            CallToolRequestParams::new("hand_off").with_arguments(args(json!({
+                "title": "完成", "summary": "做完了", "next_steps": []
+            }))),
+        )
+        .await
+        .expect("call");
+    assert_eq!(r.is_error, Some(true));
+    assert!(text(&r).contains("下一步"));
     c.cancel().await.expect("close");
 }

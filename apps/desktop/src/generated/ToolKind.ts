@@ -3,4 +3,4 @@
 /**
  * 产生请求的工具。决定回复给 AI 时的文本格式。
  */
-export type ToolKind = "zhi" | "ask_user";
+export type ToolKind = "zhi" | "ask_user" | "hand_off";

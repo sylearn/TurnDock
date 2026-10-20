@@ -16,3 +16,9 @@ pub const PER_CONNECTION_OPEN: usize = 16;
 pub const GLOBAL_OPEN: usize = 256;
 /// 请求默认截止时间。
 pub const DEFAULT_DEADLINE_MS: i64 = 24 * 60 * 60 * 1000;
+/// 交接：建议的下一步数量上限。
+pub const NEXT_STEPS: usize = 6;
+/// 交接：验证项上限。
+pub const CHECKS: usize = 12;
+/// 交接：风险项上限。
+pub const RISKS: usize = 8;

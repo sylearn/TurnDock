@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 一条请求的阅读与回复。收件箱与快速面板共用；compact 为快速面板排版。
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import type { CheckStatus } from '../generated/CheckStatus'
 import type { RequestDetail } from '../generated/RequestDetail'
 import { api, errorText } from '../lib/api'
 import { age, clientMark, statusOf } from '../lib/format'
@@ -46,6 +47,15 @@ const status = computed(() => statusOf(summary.value))
 const mark = computed(() => clientMark(summary.value.client_name))
 const waiting = computed(() => summary.value.phase === 'waiting')
 const multiple = computed(() => props.detail.selection === 'multiple')
+const isHandOff = computed(() => props.detail.summary.tool === 'hand_off')
+const summaryOpen = ref(false)
+const summaryTall = ref(false)
+const checkText: Record<CheckStatus, { mark: string; label: string }> = {
+  passed: { mark: '✓', label: '通过' },
+  failed: { mark: '✕', label: '失败' },
+  not_run: { mark: '–', label: '未运行' },
+  manual: { mark: '?', label: '需人工' },
+}
 const quickReplies = computed(() => store.prefs?.quick_replies ?? [])
 const canSend = computed(
   () =>
@@ -68,7 +78,10 @@ watch(
     flushDraft()
     loadedId = d.summary.id
     const text = d.draft?.text ?? ''
-    const selected = (d.draft?.selected_ids ?? []).filter((id) => d.options.some((o) => o.id === id))
+    let selected = (d.draft?.selected_ids ?? []).filter((id) => d.options.some((o) => o.id === id))
+    // 没有草稿时预选 AI 的推荐项：同意推荐只需按一次 ⌘↵。
+    const rec = d.options.find((o) => o.recommended)
+    if (!d.draft && rec && d.summary.phase === 'waiting') selected = [rec.id]
     hydrating = text !== draft.text || selected.join('\u0000') !== draft.selected.join('\u0000')
     draft.text = text
     draft.selected = selected
@@ -102,7 +115,13 @@ watch(
 
 watch(
   () => props.detail.message_html,
-  () => void nextTick(decorateCode),
+  () =>
+    void nextTick(() => {
+      decorateCode()
+      summaryOpen.value = false
+      // 交接的成果说明较长时先折叠，让验证与下一步留在视线内。
+      summaryTall.value = isHandOff.value && (prose.value?.scrollHeight ?? 0) > 160
+    }),
   { immediate: true },
 )
 
@@ -172,7 +191,9 @@ async function send(
     store.later.delete(id)
     toast(
       outcome === 'declined'
-        ? '已拒绝。AI 会收到明确的否定。'
+        ? isHandOff.value
+          ? '已让 AI 先停下。'
+          : '已拒绝。AI 会收到明确的否定。'
         : result === 'stored'
           ? '回复已保存。AI 下次来取时会收到。'
           : '已交给 AI。',
@@ -348,14 +369,42 @@ defineExpose({
     </header>
 
     <div class="reading">
-      <div class="column">
+      <div class="column" :class="{ handoff: isHandOff }">
         <h1 v-if="detail.heading" class="question">{{ detail.heading }}</h1>
+
+        <ul v-if="detail.checks.length" class="checks" aria-label="验证情况">
+          <li v-for="(c, i) in detail.checks" :key="i" :class="c.status">
+            <span class="check-mark" aria-hidden="true">{{ checkText[c.status].mark }}</span>
+            <span class="check-label">{{ c.label }}</span>
+            <span class="check-state">{{ c.detail || checkText[c.status].label }}</span>
+          </li>
+        </ul>
+
+        <h2 v-if="isHandOff && detail.message_html" class="summary-title">这一轮做了什么</h2>
         <!-- message_html 已在 Rust 中渲染并经 ammonia 白名单净化 -->
-        <div v-if="detail.message_html" ref="prose" class="prose" @click="onProseClick" v-html="detail.message_html" />
+        <div
+          v-if="detail.message_html"
+          ref="prose"
+          class="prose"
+          :class="{ folded: summaryTall && !summaryOpen }"
+          @click="onProseClick"
+          v-html="detail.message_html"
+        />
+        <button v-if="summaryTall" type="button" class="btn quiet unfold" @click="summaryOpen = !summaryOpen">
+          {{ summaryOpen ? '收起说明' : '展开全部说明' }}
+        </button>
+
+        <section v-if="detail.risks.length" class="risks">
+          <h2>风险与待定</h2>
+          <ul>
+            <li v-for="(r, i) in detail.risks" :key="i">{{ r }}</li>
+          </ul>
+        </section>
 
         <fieldset v-if="detail.options.length" class="options" :disabled="!waiting">
           <legend class="visually-hidden">{{ multiple ? '可多选' : '选择一项' }}</legend>
-          <p class="hint">{{ multiple ? '可多选' : '选一项' }}，按数字键选择</p>
+          <h2 v-if="isHandOff" class="next-title">下一步</h2>
+          <p v-else class="hint">{{ multiple ? '可多选' : '选一项' }}，按数字键选择</p>
           <label
             v-for="(o, i) in detail.options"
             :key="o.id"
@@ -369,7 +418,10 @@ defineExpose({
               @click.prevent="toggleOption(o.id)"
             />
             <span class="option-text">
-              <span class="option-label">{{ o.label }}</span>
+              <span class="option-label">
+                {{ o.label }}
+                <span v-if="o.recommended" class="rec">推荐</span>
+              </span>
               <span v-if="o.description" class="option-desc">{{ o.description }}</span>
             </span>
             <span v-if="i < 9" class="kbd">{{ i + 1 }}</span>
@@ -382,7 +434,17 @@ defineExpose({
             {{ status.detail }}
           </p>
           <template v-if="detail.decision">
-            <h2>{{ detail.decision.outcome === 'declined' ? '你拒绝了这个请求' : '你的回复' }}</h2>
+            <h2>
+              {{
+                detail.decision.outcome === 'declined'
+                  ? isHandOff
+                    ? '你让 AI 先停下'
+                    : '你拒绝了这个请求'
+                  : isHandOff
+                    ? '你选定的方向'
+                    : '你的回复'
+              }}
+            </h2>
             <p v-if="optionLabels.length" class="picked">{{ optionLabels.join('、') }}</p>
             <p v-if="detail.decision.text" class="said">{{ detail.decision.text }}</p>
             <p v-if="detail.decision.image_count" class="picked">附图 {{ detail.decision.image_count }} 张</p>
@@ -410,8 +472,8 @@ defineExpose({
             v-if="detail.allow_text"
             ref="textarea"
             v-model="draft.text"
-            :rows="compact ? 2 : 3"
-            placeholder="写回复…（Enter 换行，⌘↵ 发送）"
+            :rows="compact || isHandOff ? 2 : 3"
+            :placeholder="isHandOff ? '补充要求，或写下新的方向…（⌘↵ 发送）' : '写回复…（Enter 换行，⌘↵ 发送）'"
             aria-label="回复"
             @paste="onPaste"
           />
@@ -426,7 +488,7 @@ defineExpose({
           </ul>
         </div>
 
-        <div v-if="quickReplies.length && detail.allow_text" class="quick" aria-label="快捷回复">
+        <div v-if="quickReplies.length && detail.allow_text && !isHandOff" class="quick" aria-label="快捷回复">
           <button
             v-for="(q, i) in quickReplies"
             :key="i"
@@ -453,7 +515,9 @@ defineExpose({
             </button>
             <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden @change="onPick" />
             <button type="button" class="btn quiet" title="⌘L" @click="later">稍后</button>
-            <button type="button" class="btn quiet danger" title="⌘⇧⌫" @click="declineDialog?.open()">拒绝</button>
+            <button type="button" class="btn quiet danger" title="⌘⇧⌫" @click="declineDialog?.open()">
+              {{ isHandOff ? '先停下' : '拒绝' }}
+            </button>
             <button v-if="!summary.attached" type="button" class="btn quiet" @click="dismissDialog?.open()">
               关闭请求
             </button>
@@ -484,9 +548,13 @@ defineExpose({
 
     <ConfirmDialog
       ref="declineDialog"
-      title="拒绝这个请求？"
-      body="AI 会收到明确的拒绝，不会执行这个方案。"
-      confirm-label="拒绝"
+      :title="isHandOff ? '让 AI 先停下？' : '拒绝这个请求？'"
+      :body="
+        isHandOff
+          ? 'AI 不会继续这些下一步，会说明当前状态并等你的新指示。'
+          : 'AI 会收到明确的拒绝，不会执行这个方案。'
+      "
+      :confirm-label="isHandOff ? '先停下' : '拒绝'"
       danger
       with-reason
       @confirm="(reason) => send('declined', reason)"
@@ -607,6 +675,124 @@ defineExpose({
   margin-bottom: 10px;
 }
 
+/* 交接：先看结果与验证，再定方向，细节放在后面。 */
+.column.handoff {
+  display: flex;
+  flex-direction: column;
+}
+.handoff > .question {
+  order: 0;
+}
+.handoff > .checks {
+  order: 1;
+}
+.handoff > .risks {
+  order: 2;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+.handoff > .options {
+  order: 3;
+}
+.handoff > .summary-title {
+  order: 4;
+}
+.handoff > .prose {
+  order: 5;
+}
+.handoff > .unfold {
+  order: 6;
+  align-self: flex-start;
+}
+.handoff > .outcome {
+  order: 7;
+}
+.summary-title {
+  margin: 28px 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: -4px 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  line-height: 20px;
+}
+.checks li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.check-mark {
+  font-weight: 700;
+  width: 10px;
+  text-align: center;
+}
+.check-state {
+  color: var(--ink-2);
+}
+.checks .passed .check-mark {
+  color: var(--signal);
+}
+.checks .failed .check-mark,
+.checks .failed .check-state {
+  color: var(--danger);
+}
+.checks .manual .check-mark,
+.checks .manual .check-state {
+  color: var(--warn);
+}
+.checks .not_run .check-mark {
+  color: var(--ink-2);
+}
+.prose.folded {
+  max-height: 132px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.unfold {
+  margin: 4px 0 0 -12px;
+}
+.risks {
+  margin-top: 20px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--warn);
+  font-size: 13px;
+  line-height: 21px;
+}
+.risks h2 {
+  color: var(--warn);
+}
+.risks h2,
+.next-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.risks ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.next-title {
+  margin-bottom: 0;
+}
+.rec {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
 .options {
   display: grid;
   gap: 8px;
