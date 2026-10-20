@@ -18,7 +18,7 @@ brew tap sylearn/turndock https://github.com/sylearn/TurnDock && brew install --
 
 装好之后，终端输入 `turndock` 就会打开回合。
 
-> 预览期仓库尚未公开：已登录 `gh` 的协作者可以用 `gh release download -R sylearn/TurnDock -p install.sh -O - | bash` 安装。
+> 0.1.0 是预览版，尚未做 Apple 公证。用上面两种方式安装不会被拦截；如果从网页下载 dmg 手动安装，首次打开前运行 `xattr -dr com.apple.quarantine /Applications/TurnDock.app`。
 
 ## 接入 AI 客户端
 
@@ -41,16 +41,32 @@ Cursor 和其他客户端使用这段配置；回合「设置 → 接入」里�
 - 也可以再次运行安装命令，或 `brew upgrade --cask turndock`。
 - 卸载：`curl -fsSL https://github.com/sylearn/TurnDock/releases/latest/download/install.sh | bash -s -- --uninstall`。数据在 `~/Library/Application Support/TurnDock`，需要时手动删除。
 
-## 当前状态
+## 当前状态（v0.1.0 预览版，2026-10-20）
 
 | 部分 | 状态 |
 |---|---|
-| 协议内核（状态机、broker、MCP bridge） | 已实现，有单元、集成与端到端测试 |
-| 桌面应用（收件箱、快速回复面板、托盘、通知、全局快捷键） | 已实现，开发模式可运行 |
-| 回合交接（`hand_off`）与回合卡界面 | 已实现 |
-| 草稿持久化、图片回复、代码高亮 | 已实现（图片暂不随草稿持久化） |
-| 一行安装、Homebrew、应用内更新（签名校验） | 已实现；尚未做 Apple 公证 |
-| 迁移向导、真实宿主超时矩阵 | 未做，见路线 M0 第 6 项与 M4 |
+| 协议内核：状态机、broker、`turndock mcp` | 已实现；单元、集成、端到端测试通过 |
+| 工具：`hand_off`、`ask_user`、`await_reply`、`zhi` 兼容 | 已实现 |
+| 续等：宿主超时前返回 pending；应用重启时等待中的调用自动重连 | 已实现并测试 |
+| 桌面应用：收件箱、回合卡、快速回复面板、托盘、通知、全局快捷键 | 已实现 |
+| 草稿、图片回复、代码高亮、黑紫视觉、亮暗主题 | 已实现（图片暂不随草稿持久化） |
+| 分发：一行安装、Homebrew、`turndock` 命令、应用内更新（签名校验） | 已实现；首个 Release 由 GitHub Actions 构建 |
+| 设置：一键接入 Claude Code / Codex，Cursor deeplink | 已实现 |
+
+### 待完成
+
+| 事项 | 说明 |
+|---|---|
+| 在真实宿主上自用（M1.5） | 接入 Claude Code / Codex 每天使用，记录交接质量，修正规则与工具描述 |
+| 宿主超时实测 | Codex 60 秒、Claude Code 30 分钟来自文档，未在真实宿主上测；Cursor 未知 |
+| 应用内更新的端到端验证 | 需要发布 0.1.1 后从 0.1.0 实际升级一次 |
+| Apple 签名与公证 | 需要 Apple Developer 账号；目前用 ad-hoc 签名 |
+| 退出时有待回复请求的确认、图片随草稿持久化 | M2 |
+| 决策记录（按项目回看每一轮的选择） | M2 |
+| release 构建下的内存、冷启动测量 | 性能目标见 docs/05 |
+| 原生窗口交互的自动化测试 | 目前只有浏览器预览截图审查 |
+
+详细记录见 [进度记录](docs/07-进度记录.md)。
 
 ## 它怎么工作
 
