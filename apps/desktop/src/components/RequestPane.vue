@@ -31,6 +31,7 @@ const saveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const sending = ref(false)
 const notice = ref<{ tone: 'error' | 'info'; text: string } | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
+const prose = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const declineDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const dismissDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
@@ -85,7 +86,7 @@ watch(
 )
 
 watch(
-  () => [draft.text, draft.selected.join('\u0000')],
+  [() => draft.text, () => draft.selected.join('\u0000')],
   () => {
     if (hydrating) {
       hydrating = false
@@ -97,6 +98,12 @@ watch(
     window.clearTimeout(saveTimer)
     saveTimer = window.setTimeout(saveDraft, 500)
   },
+)
+
+watch(
+  () => props.detail.message_html,
+  () => void nextTick(decorateCode),
+  { immediate: true },
 )
 
 watch(images, (list) => {
@@ -268,7 +275,26 @@ function onPick(e: Event) {
 
 // ---------- 其他 ----------
 
+/** 给代码块加复制按钮（按钮是界面元素，不来自调用方内容）。 */
+function decorateCode() {
+  for (const pre of prose.value?.querySelectorAll('pre') ?? []) {
+    if (pre.querySelector(':scope > .copy-code')) continue
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'copy-code'
+    b.textContent = '复制'
+    b.setAttribute('aria-label', '复制代码')
+    pre.appendChild(b)
+  }
+}
+
 function onProseClick(e: MouseEvent) {
+  const btn = (e.target as HTMLElement | null)?.closest('.copy-code')
+  if (btn) {
+    const code = btn.parentElement?.querySelector('code')?.textContent ?? ''
+    void copy(code.replace(/\n$/, ''))
+    return
+  }
   const a = (e.target as HTMLElement | null)?.closest('a[href]')
   if (!a) return
   e.preventDefault()
@@ -325,7 +351,7 @@ defineExpose({
       <div class="column">
         <h1 v-if="detail.heading" class="question">{{ detail.heading }}</h1>
         <!-- message_html 已在 Rust 中渲染并经 ammonia 白名单净化 -->
-        <div v-if="detail.message_html" class="prose" @click="onProseClick" v-html="detail.message_html" />
+        <div v-if="detail.message_html" ref="prose" class="prose" @click="onProseClick" v-html="detail.message_html" />
 
         <fieldset v-if="detail.options.length" class="options" :disabled="!waiting">
           <legend class="visually-hidden">{{ multiple ? '可多选' : '选择一项' }}</legend>

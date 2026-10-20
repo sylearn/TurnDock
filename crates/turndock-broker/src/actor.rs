@@ -9,8 +9,8 @@ use tracing::{debug, info, warn};
 use turndock_core::ipc::{BridgeFrame, BrokerFrame, ClientInfo, ErrorCode};
 use turndock_core::state::{AttachEffect, CancelEffect, DecideEffect, StateError};
 use turndock_core::{
-    AskSpec, CallOutcome, CallRef, CallResult, ConnectionId, ImagePayload, Outcome, Phase,
-    ReplyPayload, RequestId, RequestState, Selection, limits,
+    AskSpec, CallOutcome, CallRef, CallResult, ConnectionId, ImagePayload, MessageFormat, Outcome,
+    Phase, ReplyPayload, RequestId, RequestState, Selection, limits,
 };
 
 use crate::store::{RequestRow, Store, StoredDecision};
@@ -293,7 +293,7 @@ impl Actor {
             id: id.clone(),
             client_name: row.client_name.clone(),
             project: project_name(row.project_path.as_deref()),
-            title: row.spec.display_title(),
+            title: title_of(&row.spec),
         };
         let deadline = row.deadline_at;
         self.requests.insert(id.clone(), row);
@@ -590,6 +590,20 @@ impl Actor {
             None
         };
         let (heading, body) = row.spec.heading_and_body();
+        let markdown_heading =
+            row.spec.title.is_none() && row.spec.format == MessageFormat::Markdown;
+        // 标题按 Markdown 渲染后取纯文本；若只剩空白（例如整行是 HTML），则不另起标题。
+        let (heading, body) = match heading {
+            Some(h) if markdown_heading => {
+                let plain = markdown::plain_text(&h);
+                if plain.is_empty() {
+                    (None, row.spec.message.clone())
+                } else {
+                    (Some(plain), body)
+                }
+            }
+            other => (other, body),
+        };
         Some(RequestDetail {
             summary: self.summary(row),
             heading,
@@ -618,7 +632,7 @@ impl Actor {
             client_version: r.client_version.clone(),
             project: project_name(r.project_path.as_deref()),
             project_path: r.project_path.clone(),
-            title: r.spec.display_title(),
+            title: title_of(&r.spec),
             tool: r.spec.tool,
             phase: r.state.phase,
             delivery: r.state.delivery,
@@ -759,6 +773,20 @@ impl Actor {
         let _ = self.events.send(BrokerEvent::Changed {
             revision: self.revision,
         });
+    }
+}
+
+/// 列表标题：Markdown 消息去掉格式与 HTML 后的纯文本。
+fn title_of(spec: &AskSpec) -> String {
+    let raw = spec.display_title();
+    if spec.title.is_some() || spec.format != MessageFormat::Markdown {
+        return raw;
+    }
+    let plain = markdown::plain_text(&raw);
+    if plain.is_empty() {
+        raw
+    } else {
+        turndock_core::spec::truncate_chars(&plain, 80)
     }
 }
 

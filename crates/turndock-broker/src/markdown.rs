@@ -1,9 +1,13 @@
 //! 把调用方的消息渲染为安全 HTML。这是唯一的内容安全边界：前端只接收这里的输出。
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use ammonia::Builder;
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
+use syntect::html::{ClassStyle, ClassedHTMLGenerator};
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 use turndock_core::MessageFormat;
 
 pub fn render(source: &str, format: MessageFormat) -> String {
@@ -14,14 +18,98 @@ pub fn render(source: &str, format: MessageFormat) -> String {
 }
 
 fn render_markdown(source: &str) -> String {
+    let parser = Parser::new_ext(source, options());
+    let mut events = Vec::new();
+    let mut code: Option<(String, String)> = None; // (语言, 内容)
+    for ev in parser {
+        match (&mut code, ev) {
+            (None, Event::Start(Tag::CodeBlock(kind))) => {
+                let lang = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split([' ', ',', '{']).next().unwrap_or("").to_owned()
+                    }
+                    CodeBlockKind::Indented => String::new(),
+                };
+                code = Some((lang, String::new()));
+            }
+            (Some((_, buf)), Event::Text(t)) => buf.push_str(&t),
+            (Some(_), Event::End(TagEnd::CodeBlock)) => {
+                if let Some((lang, buf)) = code.take() {
+                    events.push(Event::Html(code_block(&lang, &buf).into()));
+                }
+            }
+            (Some(_), _) => {}
+            (None, ev) => events.push(ev),
+        }
+    }
+    let mut raw = String::with_capacity(source.len() * 2);
+    html::push_html(&mut raw, events.into_iter());
+    sanitizer().clean(&raw).to_string()
+}
+
+fn options() -> Options {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(source, opts);
-    let mut raw = String::with_capacity(source.len() * 3 / 2);
-    html::push_html(&mut raw, parser);
-    sanitizer().clean(&raw).to_string()
+    opts
+}
+
+/// 单段 Markdown 的纯文本（用于标题）：只保留文字与行内代码，丢弃 HTML 与格式标记。
+pub fn plain_text(source: &str) -> String {
+    let mut out = String::new();
+    // script/style 标签之间的文字不是给人看的内容。
+    let mut hidden = false;
+    for ev in Parser::new_ext(source, options()) {
+        match ev {
+            Event::InlineHtml(h) | Event::Html(h) => {
+                let tag = h.trim_start().to_ascii_lowercase();
+                if tag.starts_with("<script") || tag.starts_with("<style") {
+                    hidden = true;
+                } else if tag.starts_with("</script") || tag.starts_with("</style") {
+                    hidden = false;
+                }
+            }
+            Event::Text(_) | Event::Code(_) if hidden => {}
+            Event::Text(t) | Event::Code(t) => out.push_str(&t),
+            Event::SoftBreak | Event::HardBreak => out.push(' '),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// 代码块：已知语言时用 syntect 生成带 `hl-` 前缀 class 的 span，配色由前端 token 决定。
+fn code_block(lang: &str, code: &str) -> String {
+    const MAX_HIGHLIGHT: usize = 64 * 1024;
+    let label = escape(lang);
+    let set = syntaxes();
+    let syntax = (!lang.is_empty() && code.len() <= MAX_HIGHLIGHT)
+        .then(|| set.find_syntax_by_token(lang))
+        .flatten();
+    let body = match syntax {
+        Some(syntax) => {
+            let mut g = ClassedHTMLGenerator::new_with_class_style(
+                syntax,
+                set,
+                ClassStyle::SpacedPrefixed { prefix: "hl-" },
+            );
+            let ok = LinesWithEndings::from(code)
+                .all(|line| g.parse_html_for_line_which_includes_newline(line).is_ok());
+            if ok { g.finalize() } else { escape(code) }
+        }
+        None => escape(code),
+    };
+    if label.is_empty() {
+        format!("<pre><code>{body}</code></pre>")
+    } else {
+        format!("<pre data-lang=\"{label}\"><code class=\"language-{label}\">{body}</code></pre>")
+    }
+}
+
+fn syntaxes() -> &'static SyntaxSet {
+    static SET: OnceLock<SyntaxSet> = OnceLock::new();
+    SET.get_or_init(SyntaxSet::load_defaults_newlines)
 }
 
 fn render_plain(source: &str) -> String {
@@ -55,6 +143,8 @@ fn sanitizer() -> Builder<'static> {
     b.add_tags(["input"]);
     b.add_tag_attributes("input", ["type", "checked", "disabled"]);
     b.add_tag_attributes("code", ["class"]);
+    b.add_tag_attributes("span", ["class"]);
+    b.add_tag_attributes("pre", ["data-lang"]);
     b.add_tag_attribute_values("input", "type", ["checkbox"]);
     b.url_schemes(HashSet::from(["http", "https", "mailto"]));
     b.link_rel(Some("noopener noreferrer"));
@@ -89,6 +179,25 @@ mod tests {
         assert!(html.contains("<table>"), "{html}");
         assert!(html.contains("rel=\"noopener noreferrer\""), "{html}");
         assert!(html.contains("type=\"checkbox\""), "{html}");
+    }
+
+    #[test]
+    fn code_blocks_are_highlighted_with_classes() {
+        let html = render("```rust\nfn main() {}\n```", MessageFormat::Markdown);
+        assert!(html.contains("data-lang=\"rust\""), "{html}");
+        assert!(html.contains("hl-"), "{html}");
+        let unknown = render("```nope\n<b>x</b>\n```", MessageFormat::Markdown);
+        assert!(unknown.contains("&lt;b&gt;"), "{unknown}");
+    }
+
+    #[test]
+    fn plain_text_drops_html_and_marks() {
+        assert_eq!(
+            plain_text(
+                "两组笔记 **37** 处重复，`a`？<img src=x onerror=alert(1)><script>alert(2)</script>"
+            ),
+            "两组笔记 37 处重复，a？"
+        );
     }
 
     #[test]

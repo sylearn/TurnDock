@@ -24,6 +24,7 @@ tracing-subscriber.workspace = true
 rusqlite.workspace = true
 pulldown-cmark.workspace = true
 ammonia.workspace = true
+syntect.workspace = true
 infer.workspace = true
 base64.workspace = true
 uuid.workspace = true
