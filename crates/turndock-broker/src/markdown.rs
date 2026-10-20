@@ -107,9 +107,19 @@ fn code_block(lang: &str, code: &str) -> String {
     }
 }
 
+/// 在后台加载语法集，避免第一条消息渲染时卡顿。
+pub fn warm_up() {
+    let _ = std::thread::Builder::new()
+        .name("turndock-syntaxes".into())
+        .spawn(|| {
+            syntaxes();
+        });
+}
+
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+    // bat 的扩展语法集：在 syntect 默认之外补上 TOML、TypeScript、Vue、Swift、Dockerfile 等。
+    SET.get_or_init(two_face::syntax::extra_newlines)
 }
 
 fn render_plain(source: &str) -> String {
@@ -188,6 +198,32 @@ mod tests {
         assert!(html.contains("hl-"), "{html}");
         let unknown = render("```nope\n<b>x</b>\n```", MessageFormat::Markdown);
         assert!(unknown.contains("&lt;b&gt;"), "{unknown}");
+    }
+
+    #[test]
+    fn common_languages_are_highlighted() {
+        for lang in [
+            "toml",
+            "ts",
+            "tsx",
+            "typescript",
+            "vue",
+            "swift",
+            "dockerfile",
+            "bash",
+            "json",
+            "yaml",
+            "python",
+            "go",
+            "sql",
+            "diff",
+        ] {
+            let html = render(
+                &format!("```{lang}\nlet x = 1 // c\n```"),
+                MessageFormat::Markdown,
+            );
+            assert!(html.contains("hl-"), "{lang} 没有高亮：{html}");
+        }
     }
 
     #[test]

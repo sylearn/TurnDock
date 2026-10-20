@@ -52,6 +52,7 @@ pub struct BrokerHandle {
 
 /// 在当前 tokio 运行时中启动协调器与 IPC 服务。
 pub async fn spawn(config: BrokerConfig) -> Result<BrokerHandle> {
+    markdown::warm_up();
     let store = match &config.db_path {
         Some(p) => Store::open(p)?,
         None => Store::open_in_memory()?,

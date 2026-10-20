@@ -205,6 +205,8 @@ defineExpose({ focusSearch: () => search.value?.focus() })
   white-space: nowrap;
 }
 .project {
+  font-family: var(--font-code);
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -224,7 +226,7 @@ defineExpose({ focusSearch: () => search.value?.focus() })
   color: var(--danger);
 }
 .flag.signal {
-  color: var(--signal);
+  color: var(--signal-fg);
 }
 .empty {
   padding: 16px 12px;

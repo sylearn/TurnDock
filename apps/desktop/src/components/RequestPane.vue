@@ -411,12 +411,17 @@ defineExpose({
             class="option"
             :class="{ on: draft.selected.includes(o.id) }"
           >
+            <!-- 原生控件只用于读屏与键盘；外观由 .pick 绘制，状态只来自 draft.selected -->
             <input
+              class="visually-hidden"
               :type="multiple ? 'checkbox' : 'radio'"
               :name="`opt-${summary.id}`"
               :checked="draft.selected.includes(o.id)"
-              @click.prevent="toggleOption(o.id)"
+              @change="toggleOption(o.id)"
             />
+            <span class="pick" :class="multiple ? 'box' : 'dot'" aria-hidden="true">
+              <svg v-if="multiple" viewBox="0 0 12 12"><path d="M2.5 6.2 5 8.5 9.5 3.5" /></svg>
+            </span>
             <span class="option-text">
               <span class="option-label">
                 {{ o.label }}
@@ -615,6 +620,8 @@ defineExpose({
 }
 .project {
   color: var(--ink-2);
+  font-family: var(--font-code);
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -628,7 +635,7 @@ defineExpose({
   white-space: nowrap;
 }
 .state.signal {
-  color: var(--signal);
+  color: var(--ok);
 }
 .state.warn {
   color: var(--warn);
@@ -662,15 +669,15 @@ defineExpose({
 }
 .question {
   margin: 0 0 14px;
-  font-family: var(--font-note);
-  font-size: 22px;
+  font-family: var(--font-display);
+  font-size: 24px;
   line-height: 32px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   user-select: text;
 }
 .compact .question {
-  font-size: 18px;
+  font-size: 19px;
   line-height: 26px;
   margin-bottom: 10px;
 }
@@ -735,9 +742,11 @@ defineExpose({
 }
 .check-state {
   color: var(--ink-2);
+  font-family: var(--font-code);
+  font-size: 11.5px;
 }
 .checks .passed .check-mark {
-  color: var(--signal);
+  color: var(--ok);
 }
 .checks .failed .check-mark,
 .checks .failed .check-state {
@@ -823,10 +832,50 @@ defineExpose({
   background: var(--signal-wash);
   box-shadow: inset 0 0 0 1px var(--signal);
 }
-.option input {
+.option {
+  cursor: pointer;
+}
+.pick {
   flex: none;
-  margin: 4px 0 0;
-  accent-color: var(--signal);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border: 1.5px solid var(--edge);
+  background: var(--sheet);
+  transition: border-color 120ms var(--ease), background-color 120ms var(--ease);
+}
+.pick.dot {
+  border-radius: 50%;
+}
+.pick.box {
+  border-radius: 4px;
+}
+.pick svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--signal-ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+.option.on .pick {
+  border-color: var(--signal);
+  background: var(--signal);
+}
+.option.on .pick.dot {
+  background: var(--sheet);
+  border-width: 5px;
+}
+.option.on .pick svg {
+  opacity: 1;
+}
+.option:has(input:focus-visible) {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 .option-text {
   flex: 1;

@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
 }
 .blank-body h1 {
   margin: 0 0 6px;
-  font-family: var(--font-note);
+  font-family: var(--font-display);
   font-size: 22px;
   line-height: 32px;
   font-weight: 600;

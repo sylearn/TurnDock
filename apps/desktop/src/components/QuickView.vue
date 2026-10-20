@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
 }
 h1 {
   margin: 0 0 4px;
-  font-family: var(--font-note);
+  font-family: var(--font-display);
   font-size: 18px;
   line-height: 26px;
   font-weight: 600;

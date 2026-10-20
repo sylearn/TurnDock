@@ -1,31 +1,34 @@
-/* 回合 · 设计 token 与基础样式。视觉方向见 docs/02-体验设计.md 第 4 节「棋与石」。 */
+/* 回合 · 设计 token 与基础样式。视觉方向见 docs/02-体验设计.md 第 5 节「黑与紫」。 */
 
 :root {
   color-scheme: light;
-  --stone: #eceeea;
-  --sheet: #fafaf8;
-  --ink: #16191a;
-  --ink-2: #555c5a;
-  --rule: #daddd7;
-  --edge: #868c88;
-  --signal: #0e6a60;
+  --stone: #f4f4f6;
+  --sheet: #ffffff;
+  --ink: #0b0b0e;
+  --ink-2: #5d5d69;
+  --rule: #e6e6eb;
+  --edge: #8e8e99;
+  --signal: #5b48e0;
+  --signal-fg: #5440d6;
   --signal-ink: #ffffff;
-  --signal-wash: #0e6a6014;
+  --signal-wash: #5b48e012;
+  --ok: #14804a;
   --warn: #8a5300;
-  --danger: #b3261e;
-  --shade: 0 12px 40px #16191a1f;
-  --code-bg: #eceeea;
-  --hl-keyword: #0e6a60;
-  --hl-string: #7a4a00;
-  --hl-number: #8e3b67;
-  --hl-function: #1d4e89;
-  --hl-type: #6b3fa0;
-  --hl-comment: #62696a;
+  --danger: #c2281b;
+  --shade: 0 16px 48px #0b0b0e24;
+  --code-bg: #f4f4f6;
+  --hl-keyword: #5440d6;
+  --hl-string: #8a5300;
+  --hl-number: #a3326f;
+  --hl-function: #1d5fae;
+  --hl-type: #0f7a5a;
+  --hl-comment: #6a6a75;
 
-  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
-  --font-note: "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
-  --font-code: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI",
+    "Microsoft YaHei", sans-serif;
+  --font-code: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 
   --measure: 720px;
   --bar: 44px;
@@ -34,49 +37,53 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --stone: #121514;
-  --sheet: #1a1e1d;
-  --ink: #e8ecea;
-  --ink-2: #a3aba8;
-  --rule: #2a302e;
-  --edge: #69716e;
-  --signal: #5fc9b9;
-  --signal-ink: #06201c;
-  --signal-wash: #5fc9b91c;
-  --warn: #e2b05a;
-  --danger: #ff8f86;
-  --shade: 0 12px 40px #00000066;
-  --code-bg: #232827;
-  --hl-keyword: #5fc9b9;
-  --hl-string: #e2b05a;
-  --hl-number: #e39ac4;
-  --hl-function: #8db8f2;
-  --hl-type: #c3a3e8;
-  --hl-comment: #8c9592;
+  --stone: #09090b;
+  --sheet: #0f0f12;
+  --ink: #ededf0;
+  --ink-2: #9b9ba8;
+  --rule: #222228;
+  --edge: #62626e;
+  --signal: #6e5bea;
+  --signal-fg: #a99bff;
+  --signal-ink: #ffffff;
+  --signal-wash: #6e5bea1f;
+  --ok: #3dd68c;
+  --warn: #e8b45a;
+  --danger: #ff8a80;
+  --shade: 0 16px 48px #00000099;
+  --code-bg: #16161a;
+  --hl-keyword: #a99bff;
+  --hl-string: #e8b45a;
+  --hl-number: #ff9ec7;
+  --hl-function: #7cc4ff;
+  --hl-type: #5ee0b0;
+  --hl-comment: #7c7c89;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --stone: #121514;
-    --sheet: #1a1e1d;
-    --ink: #e8ecea;
-    --ink-2: #a3aba8;
-    --rule: #2a302e;
-    --edge: #69716e;
-    --signal: #5fc9b9;
-    --signal-ink: #06201c;
-    --signal-wash: #5fc9b91c;
-    --warn: #e2b05a;
-    --danger: #ff8f86;
-    --shade: 0 12px 40px #00000066;
-  --code-bg: #232827;
-  --hl-keyword: #5fc9b9;
-  --hl-string: #e2b05a;
-  --hl-number: #e39ac4;
-  --hl-function: #8db8f2;
-  --hl-type: #c3a3e8;
-  --hl-comment: #8c9592;
+    --stone: #09090b;
+    --sheet: #0f0f12;
+    --ink: #ededf0;
+    --ink-2: #9b9ba8;
+    --rule: #222228;
+    --edge: #62626e;
+    --signal: #6e5bea;
+    --signal-fg: #a99bff;
+    --signal-ink: #ffffff;
+    --signal-wash: #6e5bea1f;
+    --ok: #3dd68c;
+    --warn: #e8b45a;
+    --danger: #ff8a80;
+    --shade: 0 16px 48px #00000099;
+    --code-bg: #16161a;
+    --hl-keyword: #a99bff;
+    --hl-string: #e8b45a;
+    --hl-number: #ff9ec7;
+    --hl-function: #7cc4ff;
+    --hl-type: #5ee0b0;
+    --hl-comment: #7c7c89;
   }
 }
 
@@ -223,7 +230,7 @@ button {
   vertical-align: -1px;
 }
 .prose a {
-  color: var(--signal);
+  color: var(--signal-fg);
   text-underline-offset: 2px;
   cursor: pointer;
 }

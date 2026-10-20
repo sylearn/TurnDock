@@ -21,6 +21,8 @@ export interface Snippet {
   file: string
   language: string
   content: string
+  /** Rust 渲染并净化的高亮 HTML */
+  html: string
   note: string
 }
 
@@ -29,6 +31,7 @@ export interface Integration {
   bridge_found: boolean
   snippets: Snippet[]
   rules: string
+  rules_html: string
 }
 
 /** Rust ActionError 的序列化形式。 */

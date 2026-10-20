@@ -8,6 +8,8 @@ pub struct Snippet {
     pub file: &'static str,
     pub language: &'static str,
     pub content: String,
+    /// 经同一套 Markdown 渲染与净化管线生成的高亮 HTML。
+    pub html: String,
     pub note: &'static str,
 }
 
@@ -17,6 +19,7 @@ pub struct Integration {
     pub bridge_found: bool,
     pub snippets: Vec<Snippet>,
     pub rules: String,
+    pub rules_html: String,
 }
 
 pub const RULES: &str = "\
@@ -31,6 +34,10 @@ pub const RULES: &str = "\
 - 工具返回 pending 时立即调用 `await_reply` 继续等待；pending、超时、取消、关闭都不是同意。
 - 用户选定方向后按它执行；用户要求先停下时，说明当前状态并等待新的指示。
 ";
+
+fn render(md: &str) -> String {
+    turndock_broker::markdown::render(md, turndock_core::MessageFormat::Markdown)
+}
 
 fn bridge_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
@@ -51,14 +58,16 @@ pub fn build() -> Integration {
         Snippet {
             host: "Claude Code",
             file: "终端",
-            language: "shell",
+            language: "bash",
             content: format!("claude mcp add --scope user turndock -- '{p}'"),
+            html: String::new(),
             note: "Claude Code 的 stdio 空闲超时为 30 分钟，TurnDock 每 25 分钟返回一次 pending，AI 会自动续等。",
         },
         Snippet {
             host: "Codex",
             file: "~/.codex/config.toml",
             language: "toml",
+            html: String::new(),
             content: format!(
                 "[mcp_servers.turndock]\ncommand = {pj}\ntool_timeout_sec = 3600\nenv = {{ TURNDOCK_WAIT_SECS = \"3300\" }}"
             ),
@@ -68,16 +77,25 @@ pub fn build() -> Integration {
             host: "Cursor",
             file: "~/.cursor/mcp.json",
             language: "json",
+            html: String::new(),
             content: format!(
                 "{{\n  \"mcpServers\": {{\n    \"turndock\": {{ \"command\": {pj} }}\n  }}\n}}"
             ),
             note: "Cursor 的超时尚未实测，默认每 50 秒续等一次。",
         },
     ];
+    let snippets = snippets
+        .into_iter()
+        .map(|mut s| {
+            s.html = render(&format!("```{}\n{}\n```", s.language, s.content));
+            s
+        })
+        .collect();
     Integration {
         bridge_found: path.exists(),
         bridge_path: p,
         snippets,
         rules: RULES.to_owned(),
+        rules_html: render(RULES),
     }
 }

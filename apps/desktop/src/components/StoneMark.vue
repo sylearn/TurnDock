@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 棋子：实心墨子 = 轮到你；带警示环 = 轮到你但 AI 没在等；空心 = 已交还；虚线 = 已结束。
+// 状态点：绿色实心 = 轮到你且 AI 在等；琥珀 = 轮到你但 AI 没在等；紫色空心 = 已交还；虚线 = 已结束。
 import type { Stone } from '../lib/format'
 
 defineProps<{ stone: Stone; size?: number }>()
@@ -27,6 +27,13 @@ defineProps<{ stone: Stone; size?: number }>()
 .stone {
   flex: none;
   fill: var(--ink);
+}
+/* 轮到你且 AI 在等：绿色“在线”点 */
+.stone.mine {
+  fill: var(--ok);
+}
+.stone.idle {
+  fill: var(--warn);
 }
 .ring {
   fill: none;
