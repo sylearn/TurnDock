@@ -1,8 +1,9 @@
 //! 回合（TurnDock）桌面外壳：嵌入协调器，提供界面命令、事件、通知、托盘与全局快捷键。
 //! 业务状态全部在 broker；这里只做转发与系统集成。
 
-mod integration;
 mod prefs;
+mod setup;
+mod update;
 
 use std::sync::Mutex;
 
@@ -92,9 +93,44 @@ fn set_prefs(app: AppHandle, state: State<'_, AppState>, prefs: Prefs) -> Result
     Ok(prefs)
 }
 
+// 检测会启动登录 shell、读取配置文件，放到阻塞线程里做。
 #[tauri::command]
-fn integration() -> integration::Integration {
-    integration::build()
+async fn setup_status() -> Result<setup::Setup, String> {
+    tauri::async_runtime::spawn_blocking(setup::build)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 用户点击「接入」后才执行。Cursor 交给它自己的安装确认。
+#[tauri::command]
+async fn connect_host(app: AppHandle, host: setup::HostId) -> Result<(), String> {
+    if host == setup::HostId::Json {
+        tauri::async_runtime::spawn_blocking(|| setup::ensure_command(true))
+            .await
+            .map_err(|e| e.to_string())??;
+        return app
+            .opener()
+            .open_url(setup::cursor_deeplink(), None::<&str>)
+            .map_err(|e| format!("无法打开 Cursor：{e}"));
+    }
+    tauri::async_runtime::spawn_blocking(move || setup::connect(host))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<Option<update::UpdateInfo>, String> {
+    update::check(&app).await
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    update::install(&app).await?;
+    // 先断开 bridge，它们会在等待预算内自动重连到新版本。
+    if let Some(state) = app.try_state::<AppState>() {
+        state.broker.shutdown();
+    }
+    app.restart();
 }
 
 /// 只打开 http/https 链接，交给系统默认浏览器。
@@ -124,6 +160,14 @@ fn hide_quick(app: AppHandle) {
     if let Some(w) = app.get_webview_window("quick") {
         let _ = w.hide();
     }
+}
+
+fn prefs_check_updates(app: &AppHandle) -> bool {
+    app.state::<AppState>()
+        .prefs
+        .lock()
+        .map(|p| p.check_updates)
+        .unwrap_or(true)
 }
 
 // ---------- 窗口 ----------
@@ -308,6 +352,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(update::Pending::default())
         .setup(|app| {
             let config = BrokerConfig::from_env()?;
             let broker = turndock_broker::start_thread(config)?;
@@ -318,6 +364,15 @@ pub fn run() {
             app.manage(AppState {
                 broker: broker.clone(),
                 prefs: Mutex::new(prefs),
+            });
+            if prefs_check_updates(app.handle()) {
+                update::check_in_background(app.handle().clone());
+            }
+            // 拖拽安装时补上终端命令；需要管理员权限时留到用户点「接入」再说。
+            std::thread::spawn(|| {
+                if let Err(e) = setup::ensure_command(false) {
+                    tracing::debug!(error = %e, "未能静默安装 turndock 命令");
+                }
             });
             build_tray(app.handle())?;
             forward_events(app.handle().clone(), broker.clone());
@@ -340,7 +395,10 @@ pub fn run() {
             save_draft,
             get_prefs,
             set_prefs,
-            integration,
+            setup_status,
+            connect_host,
+            check_update,
+            install_update,
             open_external,
             show_inbox,
             show_quick,

@@ -17,6 +17,8 @@ pub struct Prefs {
     pub popup: bool,
     /// system / light / dark
     pub theme: String,
+    /// 启动时检查一次新版本（只请求 GitHub Releases 上的 latest.json）。
+    pub check_updates: bool,
 }
 
 impl Default for Prefs {
@@ -31,6 +33,7 @@ impl Default for Prefs {
             notify: true,
             popup: false,
             theme: "system".into(),
+            check_updates: true,
         }
     }
 }

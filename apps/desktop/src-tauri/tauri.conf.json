@@ -47,10 +47,30 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "DeveloperTool",
-    "shortDescription": "让 AI 在需要你时停下来等你",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "macOS": { "minimumSystemVersion": "13.0" }
+    "shortDescription": "你和 AI 之间的交接点",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI2OTFCMTA1MTk5OTQ2RDkKUldUWlJwa1pCYkdSdGp0VFZINWNuOEJjVHJicTVndm43VngxdHQ1RnhJd0V4dERuTm85TkIvb1gK",
+      "endpoints": [
+        "https://github.com/sylearn/TurnDock/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

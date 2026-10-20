@@ -81,12 +81,31 @@ defineExpose({ focusSearch: () => search.value?.focus() })
     <div class="bottom">
       <button type="button" class="btn quiet" :aria-pressed="settingsOpen" @click="emit('settings')">
         设置与接入
+        <span v-if="store.update" class="update-dot" :title="`可以更新到 ${store.update.version}`">
+          <span class="sr-only">，有新版本</span>
+        </span>
       </button>
     </div>
   </nav>
 </template>
 
 <style scoped>
+.update-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  vertical-align: 1px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .sidebar {
   display: flex;
   flex-direction: column;

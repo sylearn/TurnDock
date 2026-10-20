@@ -1,13 +1,13 @@
 [package]
 name = "turndock-bridge"
-description = "回合（TurnDock）MCP stdio 桥接器：turndock-mcp"
+description = "回合（TurnDock）命令行：turndock（打开窗口 / MCP stdio 服务）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "turndock-mcp"
+name = "turndock"
 path = "src/main.rs"
 
 [dependencies]

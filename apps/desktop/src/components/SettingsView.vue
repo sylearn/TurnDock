@@ -1,15 +1,26 @@
 <script setup lang="ts">
-// 设置：接入（三步）/ 偏好 / 数据。接入只生成配置文本，不修改任何外部文件。
-import { computed, onMounted, reactive, ref, toRaw, watch } from 'vue'
-import { api, errorText, type Integration, type Prefs } from '../lib/api'
+// 设置：接入 / 偏好 / 关于。接入命令对所有人都一样；只有点击「接入」时才会修改本机配置。
+import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
+import {
+  api,
+  errorText,
+  onUpdateProgress,
+  type Host,
+  type Prefs,
+  type Setup,
+  type UpdateProgress,
+} from '../lib/api'
 import { store, toast } from '../lib/store'
 
-type Tab = 'connect' | 'prefs' | 'data'
+const INSTALL_LINE = 'curl -fsSL https://github.com/sylearn/TurnDock/releases/latest/download/install.sh | bash'
+
+type Tab = 'connect' | 'prefs' | 'about'
 const tab = ref<Tab>('connect')
-const integration = ref<Integration | null>(null)
-const host = ref(0)
+const setup = ref<Setup | null>(null)
 const error = ref<string | null>(null)
 const ready = ref(false)
+/** 正在执行的操作：某个客户端的接入或更新。 */
+const busy = ref<string | null>(null)
 
 const form = reactive<Prefs>({
   quick_replies: [],
@@ -17,24 +28,32 @@ const form = reactive<Prefs>({
   notify: true,
   popup: false,
   theme: 'system',
+  check_updates: true,
 })
 const editingShortcut = ref(false)
 const shortcutDraft = ref('')
+const rulesOpen = ref(false)
 
-const snippet = computed(() => integration.value?.snippets[host.value] ?? null)
 
+async function loadSetup() {
+  try {
+    setup.value = await api.setupStatus()
+  } catch (e) {
+    error.value = errorText(e)
+  }
+}
+
+let stopProgress: (() => void) | undefined
 onMounted(async () => {
   if (store.prefs) {
     const p = toRaw(store.prefs)
     Object.assign(form, { ...p, quick_replies: [...p.quick_replies] })
   }
   ready.value = true
-  try {
-    integration.value = await api.integration()
-  } catch (e) {
-    error.value = errorText(e)
-  }
+  stopProgress = await onUpdateProgress((p) => (progress.value = p))
+  await loadSetup()
 })
+onUnmounted(() => stopProgress?.())
 
 // 偏好即改即存（去抖），失败时就地说明原因。
 let timer: number | undefined
@@ -63,6 +82,74 @@ async function copy(text: string, what: string) {
     toast(`已复制${what}`)
   } catch {
     error.value = '复制失败'
+  }
+}
+
+function hostState(h: Host): { text: string; tone: 'ok' | 'idle' | 'off' } | null {
+  if (h.connected) return { text: h.id === 'json' ? 'Cursor 已接入' : '已接入', tone: 'ok' }
+  if (h.installed === false) return { text: '本机未安装', tone: 'off' }
+  if (h.connected === false && h.id !== 'json') return { text: '未接入', tone: 'idle' }
+  return null
+}
+
+function actionLabel(h: Host): string | null {
+  if (h.connected || h.installed === false) return null
+  if (h.action === 'run') return '接入'
+  if (h.action === 'open') return '在 Cursor 中接入'
+  return null
+}
+
+async function connect(h: Host) {
+  busy.value = h.id
+  error.value = null
+  try {
+    await api.connectHost(h.id)
+    if (h.action === 'open') {
+      toast('已打开 Cursor，在它的窗口里确认')
+    } else {
+      toast(`已接入 ${h.name}，新开的会话即可使用`)
+    }
+    await loadSetup()
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    busy.value = null
+  }
+}
+
+// ---------- 更新 ----------
+const checking = ref(false)
+const checked = ref(false)
+const progress = ref<UpdateProgress | null>(null)
+const percent = computed(() => {
+  const p = progress.value
+  return p?.total ? Math.min(100, Math.round((p.downloaded / p.total) * 100)) : null
+})
+
+async function checkUpdate() {
+  checking.value = true
+  error.value = null
+  try {
+    store.update = await api.checkUpdate()
+    checked.value = true
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    checking.value = false
+  }
+}
+
+async function installUpdate() {
+  busy.value = 'update'
+  error.value = null
+  progress.value = { downloaded: 0, total: null }
+  try {
+    // 成功时应用会重启，这里不会返回。
+    await api.installUpdate()
+  } catch (e) {
+    error.value = errorText(e)
+    busy.value = null
+    progress.value = null
   }
 }
 
@@ -112,7 +199,7 @@ function removeReply(i: number) {
       <h1 data-tauri-drag-region>设置</h1>
       <div class="tabs" role="tablist">
         <button
-          v-for="t in ([['connect', '接入'], ['prefs', '偏好'], ['data', '数据']] as const)"
+          v-for="t in ([['connect', '接入'], ['prefs', '偏好'], ['about', '关于']] as const)"
           :key="t[0]"
           type="button"
           role="tab"
@@ -130,74 +217,57 @@ function removeReply(i: number) {
 
         <!-- 接入 -->
         <template v-if="tab === 'connect'">
-          <div class="status" :class="{ bad: integration && !integration.bridge_found }">
-            <span class="live" aria-hidden="true" />
-            <span class="status-text">
-              {{ !integration ? '正在检查…' : integration.bridge_found ? 'turndock-mcp 已就绪' : '没有找到 turndock-mcp' }}
-            </span>
-            <code class="path" :title="integration?.bridge_path">{{ integration?.bridge_path }}</code>
-            <button
-              v-if="integration"
-              type="button"
-              class="btn quiet small"
-              @click="copy(integration.bridge_path, '路径')"
-            >
-              复制路径
-            </button>
-          </div>
-          <p v-if="integration && !integration.bridge_found" class="hint warn">
-            开发环境请先运行 <code>cargo build -p turndock-bridge</code>。
-          </p>
-
           <ol class="steps">
             <li>
-              <h2>添加到你的 AI 客户端</h2>
-              <div class="segmented" role="tablist" aria-label="AI 客户端">
-                <button
-                  v-for="(s, i) in integration?.snippets ?? []"
-                  :key="s.host"
-                  type="button"
-                  role="tab"
-                  :aria-selected="host === i"
-                  @click="host = i"
-                >
-                  {{ s.host }}
-                </button>
-              </div>
-              <div v-if="snippet" class="code-card">
-                <div class="code-head">
-                  <code class="file">{{ snippet.file }}</code>
-                  <button type="button" class="btn quiet small" @click="copy(snippet.content, '配置')">复制</button>
-                </div>
-                <!-- html 由 Rust 渲染并净化 -->
-                <div class="prose code-body" v-html="snippet.html" />
-              </div>
-              <p v-if="snippet" class="hint">{{ snippet.note }}</p>
+              <h2>接入你的 AI 客户端</h2>
+              <p class="hint">点「接入」由回合替你运行；也可以复制命令到终端，在任何一台 Mac 上都一样。</p>
+              <ul class="hosts">
+                <li v-for="h in setup?.hosts ?? []" :key="h.id" class="host">
+                  <div class="host-head">
+                    <span class="host-name">{{ h.name }}</span>
+                    <span v-if="hostState(h)" class="pill" :class="hostState(h)!.tone">{{ hostState(h)!.text }}</span>
+                    <span class="spacer" />
+                    <button
+                      v-if="actionLabel(h)"
+                      type="button"
+                      class="btn primary small"
+                      :disabled="busy !== null"
+                      @click="connect(h)"
+                    >
+                      {{ busy === h.id ? '正在接入…' : actionLabel(h) }}
+                    </button>
+                  </div>
+                  <div class="code-line">
+                    <!-- html 由 Rust 渲染并净化 -->
+                    <div class="prose code-body" v-html="h.html" />
+                    <button
+                      type="button"
+                      class="btn quiet small copy"
+                      :aria-label="`复制 ${h.name} 的接入${h.language === 'json' ? '配置' : '命令'}`"
+                      @click="copy(h.snippet, h.language === 'json' ? '配置' : '命令')"
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <p class="host-note">{{ h.note }}</p>
+                </li>
+              </ul>
             </li>
 
             <li>
-              <h2>告诉 AI 何时交接</h2>
+              <h2>交接规则 <span class="optional">可选</span></h2>
               <p class="hint">
-                加到项目的 AGENTS.md、CLAUDE.md 或客户端的规则设置里。AI 会在每轮工作结束时交给你一张回合卡。
+                回合已经通过 MCP 把交接规则告诉 AI。想让它每轮都稳定交接，可以把这段加进 CLAUDE.md 或 AGENTS.md。
               </p>
               <div class="code-card">
                 <div class="code-head">
-                  <code class="file">AGENTS.md / CLAUDE.md</code>
-                  <button
-                    type="button"
-                    class="btn quiet small"
-                    @click="copy(integration?.rules ?? '', '规则')"
-                  >
-                    复制
+                  <button type="button" class="disclose" :aria-expanded="rulesOpen" @click="rulesOpen = !rulesOpen">
+                    {{ rulesOpen ? '收起规则' : '查看规则' }}
                   </button>
+                  <button type="button" class="btn quiet small" @click="copy(setup?.rules ?? '', '规则')">复制</button>
                 </div>
-                <div class="prose rules" v-html="integration?.rules_html ?? ''" />
+                <div v-if="rulesOpen" class="prose rules" v-html="setup?.rules_html ?? ''" />
               </div>
-            </li>
-
-            <li>
-              <h2>试一下</h2>
-              <p class="hint">让 AI 做一件小事，比如修一个拼写错误。它结束时，回合卡会出现在左侧队列里。</p>
             </li>
           </ol>
         </template>
@@ -295,9 +365,66 @@ function removeReply(i: number) {
           </div>
         </template>
 
-        <!-- 数据 -->
+        <!-- 关于 -->
         <template v-else>
-          <h2 class="group">保存在哪里</h2>
+          <div class="about">
+            <span class="wordmark">回合</span>
+            <span class="version">TurnDock {{ setup?.version ?? '' }}</span>
+          </div>
+
+          <h2 class="group">更新</h2>
+          <div class="panel">
+            <div class="row">
+              <div class="row-text">
+                <template v-if="store.update">
+                  <span class="row-title">可以更新到 {{ store.update.version }}</span>
+                  <span class="row-desc">下载后会验证签名，然后重启回合；等待中的 AI 会自动重连</span>
+                </template>
+                <template v-else>
+                  <span class="row-title">{{ checked ? '已是最新版本' : '检查新版本' }}</span>
+                  <span class="row-desc">只请求 GitHub Releases 上的版本信息，不发送任何数据</span>
+                </template>
+              </div>
+              <button
+                v-if="store.update"
+                type="button"
+                class="btn primary small"
+                :disabled="busy !== null"
+                @click="installUpdate"
+              >
+                {{ busy === 'update' ? (percent !== null ? `正在下载 ${percent}%` : '正在下载…') : '更新并重启' }}
+              </button>
+              <button v-else type="button" class="btn small" :disabled="checking" @click="checkUpdate">
+                {{ checking ? '正在检查…' : '检查更新' }}
+              </button>
+            </div>
+            <div v-if="store.update?.notes" class="row notes">
+              <p>{{ store.update.notes }}</p>
+            </div>
+            <div class="row">
+              <div class="row-text">
+                <span class="row-title">启动时检查更新</span>
+                <span class="row-desc">有新版本时在「设置与接入」旁提示，不会自动安装</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                class="switch"
+                :aria-checked="form.check_updates"
+                aria-label="启动时检查更新"
+                @click="form.check_updates = !form.check_updates"
+              />
+            </div>
+          </div>
+
+          <h2 class="group">在另一台电脑上安装</h2>
+          <div class="code-line single">
+            <code class="install">{{ INSTALL_LINE }}</code>
+            <button type="button" class="btn quiet small copy" @click="copy(INSTALL_LINE, '安装命令')">复制</button>
+          </div>
+          <p class="hint">在终端运行。再次运行即更新到最新版本；加 <code>-s -- --uninstall</code> 卸载。</p>
+
+          <h2 class="group">数据</h2>
           <div class="panel">
             <div class="row">
               <div class="row-text">
@@ -376,43 +503,134 @@ function removeReply(i: number) {
   padding: 0 40px;
 }
 
-/* 状态条 */
-.status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 0 6px 0 14px;
+/* 客户端列表：一行名称与状态，一行命令，一行说明 */
+.hosts {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
   border: 1px solid var(--rule);
   border-radius: 10px;
-  background: var(--stone);
-  font-size: 13px;
-}
-.live {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
-  flex: none;
-}
-.status.bad .live {
-  background: var(--warn);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent);
-}
-.status-text {
-  white-space: nowrap;
-  font-weight: 500;
-}
-.path {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-code);
+}
+.host {
+  padding: 12px 14px 12px;
+  background: var(--sheet);
+}
+.host + .host {
+  border-top: 1px solid var(--rule);
+}
+.host-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.host-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.spacer {
+  flex: 1;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   font-size: 11.5px;
   color: var(--ink-2);
+  background: var(--stone);
+}
+.pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pill.ok {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.pill.idle::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.pill.off {
+  opacity: 0.75;
+}
+.pill.off::before {
+  display: none;
+}
+.code-line {
+  position: relative;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: var(--code-bg);
+}
+.code-line .copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.code-line.single {
+  padding: 10px 70px 10px 14px;
+  border: 1px solid var(--rule);
+}
+.install {
+  display: block;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 20px;
+  word-break: break-all;
+  user-select: all;
+}
+.host-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+.optional {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.disclose {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--signal-fg);
+  font-size: 12.5px;
+}
+
+/* 关于 */
+.about {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.version {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.notes p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 20px;
+  color: var(--ink-2);
+  white-space: pre-wrap;
 }
 
 /* 步骤：这是真实的先后顺序，所以用编号 */
@@ -523,11 +741,12 @@ function removeReply(i: number) {
 .code-body :deep(pre),
 .code-body :deep(pre[data-lang]) {
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 70px 10px 14px;
+  background: transparent;
+  white-space: pre;
+  overflow-x: auto;
   border-radius: 0;
   max-height: none;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .code-body :deep(pre[data-lang])::before,
 .code-body :deep(.copy-code) {

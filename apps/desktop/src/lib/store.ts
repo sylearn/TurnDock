@@ -2,7 +2,7 @@
 import { computed, reactive } from 'vue'
 import type { RequestDetail } from '../generated/RequestDetail'
 import type { RequestSummary } from '../generated/RequestSummary'
-import { api, errorText, onBrokerEvent, onPrefs, type Prefs } from './api'
+import { api, errorText, onBrokerEvent, onPrefs, onUpdateAvailable, type Prefs, type UpdateInfo } from './api'
 import { isOpen } from './format'
 
 export type Filter = 'open' | 'done'
@@ -21,6 +21,8 @@ export const store = reactive({
   /** 稍后处理：只影响本窗口内的排序，不改变请求状态。 */
   later: new Set<string>(),
   toast: null as string | null,
+  /** 后台检查到的新版本；在设置入口与「关于」里提示。 */
+  update: null as UpdateInfo | null,
 })
 
 let toastTimer: number | undefined
@@ -136,6 +138,7 @@ export async function start() {
     store.prefs = p
     applyTheme(p.theme)
   })
+  await onUpdateAvailable((u) => (store.update = u))
   window.setInterval(() => (store.now = Date.now()), 30_000)
   try {
     store.prefs = await api.getPrefs()

@@ -1,4 +1,4 @@
-//! 端到端：真实的 turndock-mcp 子进程 + 进程内 broker + rmcp 客户端（扮演 AI 宿主）。
+//! 端到端：真实的 `turndock mcp` 子进程 + 进程内 broker + rmcp 客户端（扮演 AI 宿主）。
 
 use std::time::Duration;
 
@@ -32,7 +32,8 @@ async fn start() -> Env {
 }
 
 async fn client(env: &Env, name: &str, wait_secs: u64) -> RunningService<RoleClient, ClientConfig> {
-    let mut cmd = tokio::process::Command::new(env!("CARGO_BIN_EXE_turndock-mcp"));
+    let mut cmd = tokio::process::Command::new(env!("CARGO_BIN_EXE_turndock"));
+    cmd.arg("mcp");
     cmd.env("TURNDOCK_SOCKET", env.dir.path().join("run/b.sock"))
         .env("TURNDOCK_NO_LAUNCH", "1")
         .env("TURNDOCK_WAIT_SECS", wait_secs.to_string());
@@ -246,7 +247,8 @@ async fn bridge_restart_can_claim_by_request_id() {
 #[tokio::test]
 async fn missing_broker_fails_fast_with_clear_error() {
     let dir = tempfile::tempdir().expect("tmp");
-    let mut cmd = tokio::process::Command::new(env!("CARGO_BIN_EXE_turndock-mcp"));
+    let mut cmd = tokio::process::Command::new(env!("CARGO_BIN_EXE_turndock"));
+    cmd.arg("mcp");
     cmd.env("TURNDOCK_SOCKET", dir.path().join("none.sock"))
         .env("TURNDOCK_NO_LAUNCH", "1");
     let c = ClientConfig::new(

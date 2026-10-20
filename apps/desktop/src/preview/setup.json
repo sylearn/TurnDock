@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "command": {
+    "state": "missing",
+    "path": "/usr/local/bin/turndock",
+    "target": null,
+    "bundled": "/Applications/TurnDock.app/Contents/MacOS/turndock",
+    "bundled_found": false
+  },
+  "hosts": [
+    {
+      "id": "claude_code",
+      "name": "Claude Code",
+      "installed": true,
+      "connected": false,
+      "action": "run",
+      "snippet": "claude mcp add --scope user turndock -- turndock mcp",
+      "language": "bash",
+      "html": "<pre data-lang=\"bash\"><code class=\"language-bash\"><span class=\"hl-source hl-shell hl-bash\"><span class=\"hl-meta hl-function-call hl-shell\"><span class=\"hl-variable hl-function hl-shell\">claude</span></span><span class=\"hl-meta hl-function-call hl-arguments hl-shell\"> mcp add<span class=\"hl-variable hl-parameter hl-option hl-shell\"><span class=\"hl-punctuation hl-definition hl-parameter hl-shell\"> --</span>scope</span> user turndock<span class=\"hl-keyword hl-operator hl-end-of-options hl-shell\"> --</span></span><span class=\"hl-meta hl-function-call hl-arguments hl-shell\"> turndock mcp</span>\n</span></code></pre>",
+      "note": "接入到用户范围，所有项目可用。重启 Claude Code 会话后生效。"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "installed": true,
+      "connected": false,
+      "action": "run",
+      "snippet": "codex mcp add turndock -- turndock mcp",
+      "language": "bash",
+      "html": "<pre data-lang=\"bash\"><code class=\"language-bash\"><span class=\"hl-source hl-shell hl-bash\"><span class=\"hl-meta hl-function-call hl-shell\"><span class=\"hl-variable hl-function hl-shell\">codex</span></span><span class=\"hl-meta hl-function-call hl-arguments hl-shell\"> mcp add turndock<span class=\"hl-keyword hl-operator hl-end-of-options hl-shell\"> --</span></span><span class=\"hl-meta hl-function-call hl-arguments hl-shell\"> turndock mcp</span>\n</span></code></pre>",
+      "note": "Codex 默认 60 秒工具超时：回合每 50 秒返回一次 pending，AI 会自动续等，无需改配置。"
+    },
+    {
+      "id": "json",
+      "name": "Cursor 及其他客户端",
+      "installed": null,
+      "connected": false,
+      "action": "open",
+      "snippet": "{\n  \"mcpServers\": {\n    \"turndock\": {\n      \"command\": \"turndock\",\n      \"args\": [\"mcp\"]\n    }\n  }\n}",
+      "language": "json",
+      "html": "<pre data-lang=\"json\"><code class=\"language-json\"><span class=\"hl-source hl-json\"><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-section hl-mapping hl-begin hl-json\">{</span>\n  </span><span class=\"hl-meta hl-mapping hl-key hl-json\"><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>mcpServers<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span></span><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-separator hl-mapping hl-key-value hl-json\">:</span> </span><span class=\"hl-meta hl-mapping hl-value hl-json\"><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-section hl-mapping hl-begin hl-json\">{</span>\n    </span><span class=\"hl-meta hl-mapping hl-key hl-json\"><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>turndock<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span></span><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-separator hl-mapping hl-key-value hl-json\">:</span> </span><span class=\"hl-meta hl-mapping hl-value hl-json\"><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-section hl-mapping hl-begin hl-json\">{</span>\n      </span><span class=\"hl-meta hl-mapping hl-key hl-json\"><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>command<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span></span><span class=\"hl-meta hl-mapping hl-json\"><span class=\"hl-punctuation hl-separator hl-mapping hl-key-value hl-json\">:</span> </span><span class=\"hl-meta hl-mapping hl-value hl-json\"><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>turndock<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span><span class=\"hl-punctuation hl-separator hl-mapping hl-pair hl-json\">,</span>\n      </span><span class=\"hl-meta hl-mapping hl-key hl-json\"><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>args<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span></span><span class=\"hl-meta hl-mapping hl-value hl-json\"><span class=\"hl-punctuation hl-separator hl-mapping hl-key-value hl-json\">:</span> </span><span class=\"hl-meta hl-mapping hl-value hl-json\"><span class=\"hl-meta hl-sequence hl-json\"><span class=\"hl-punctuation hl-section hl-sequence hl-begin hl-json\">[</span><span class=\"hl-string hl-quoted hl-double hl-json\"><span class=\"hl-punctuation hl-definition hl-string hl-begin hl-json\">\"</span>mcp<span class=\"hl-punctuation hl-definition hl-string hl-end hl-json\">\"</span></span><span class=\"hl-punctuation hl-section hl-sequence hl-end hl-json\">]</span></span>\n    <span class=\"hl-punctuation hl-section hl-mapping hl-end hl-json\">}</span></span>\n  <span class=\"hl-punctuation hl-section hl-mapping hl-end hl-json\">}</span></span>\n<span class=\"hl-punctuation hl-section hl-mapping hl-end hl-json\">}</span></span>\n</span></code></pre>",
+      "note": "「在 Cursor 中接入」由 Cursor 弹出确认。其他支持 stdio MCP 的客户端，把这段配置加进它的 MCP 设置。"
+    }
+  ],
+  "rules": "## 与用户交接（TurnDock）\n\n- 做了实际工作的一轮（改了文件、运行了命令、完成了任务）结束前，调用 `hand_off` 交接，在用户回复前不要结束：\n  - title：一句话说明结果；summary：做了什么、关键决定、产出在哪里\n  - checks：如实区分 passed / failed / not_run / manual，没跑就写 not_run\n  - risks：风险、假设与待定事项\n  - next_steps：2–4 个具体可执行的下一步，恰好一个推荐，并写明理由与代价\n- 纯问答不需要交接。工作中途遇到多个可行方案或有影响的操作时，用 `ask_user` 询问并标出推荐。\n- 工具返回 pending 时立即调用 `await_reply` 继续等待；pending、超时、取消、关闭都不是同意。\n- 用户选定方向后按它执行；用户要求先停下时，说明当前状态并等待新的指示。\n",
+  "rules_html": "<h2>与用户交接（TurnDock）</h2>\n<ul>\n<li>做了实际工作的一轮（改了文件、运行了命令、完成了任务）结束前，调用 <code>hand_off</code> 交接，在用户回复前不要结束：\n<ul>\n<li>title：一句话说明结果；summary：做了什么、关键决定、产出在哪里</li>\n<li>checks：如实区分 passed / failed / not_run / manual，没跑就写 not_run</li>\n<li>risks：风险、假设与待定事项</li>\n<li>next_steps：2–4 个具体可执行的下一步，恰好一个推荐，并写明理由与代价</li>\n</ul>\n</li>\n<li>纯问答不需要交接。工作中途遇到多个可行方案或有影响的操作时，用 <code>ask_user</code> 询问并标出推荐。</li>\n<li>工具返回 pending 时立即调用 <code>await_reply</code> 继续等待；pending、超时、取消、关闭都不是同意。</li>\n<li>用户选定方向后按它执行；用户要求先停下时，说明当前状态并等待新的指示。</li>\n</ul>\n"
+}

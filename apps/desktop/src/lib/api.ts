@@ -14,24 +14,51 @@ export interface Prefs {
   notify: boolean
   popup: boolean
   theme: 'system' | 'light' | 'dark'
+  check_updates: boolean
 }
 
-export interface Snippet {
-  host: string
-  file: string
+export interface CommandStatus {
+  state: 'ready' | 'missing' | 'elsewhere'
+  path: string
+  target: string | null
+  bundled: string
+  bundled_found: boolean
+}
+
+export type HostId = 'claude_code' | 'codex' | 'json'
+
+export interface Host {
+  id: HostId
+  name: string
+  installed: boolean | null
+  connected: boolean | null
+  /** run：回合替你运行接入命令；open：交给客户端自己的确认；copy：只能复制 */
+  action: 'run' | 'open' | 'copy'
+  snippet: string
   language: string
-  content: string
   /** Rust 渲染并净化的高亮 HTML */
   html: string
   note: string
 }
 
-export interface Integration {
-  bridge_path: string
-  bridge_found: boolean
-  snippets: Snippet[]
+export interface Setup {
+  version: string
+  command: CommandStatus
+  hosts: Host[]
   rules: string
   rules_html: string
+}
+
+export interface UpdateInfo {
+  current: string
+  version: string
+  notes: string | null
+  date: string | null
+}
+
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
 }
 
 /** Rust ActionError 的序列化形式。 */
@@ -59,7 +86,10 @@ export const api = {
   saveDraft: (id: string, draft: Draft) => invoke<void>('save_draft', { id, draft }),
   getPrefs: () => invoke<Prefs>('get_prefs'),
   setPrefs: (prefs: Prefs) => invoke<Prefs>('set_prefs', { prefs }),
-  integration: () => invoke<Integration>('integration'),
+  setupStatus: () => invoke<Setup>('setup_status'),
+  connectHost: (host: HostId) => invoke<void>('connect_host', { host }),
+  checkUpdate: () => invoke<UpdateInfo | null>('check_update'),
+  installUpdate: () => invoke<void>('install_update'),
   openExternal: (url: string) => invoke<void>('open_external', { url }),
   showInbox: (id: string | null) => invoke<void>('show_inbox', { id }),
   showQuick: () => invoke<void>('show_quick'),
@@ -76,4 +106,12 @@ export function onSelect(cb: (id: string | null) => void): Promise<UnlistenFn> {
 
 export function onPrefs(cb: (p: Prefs) => void): Promise<UnlistenFn> {
   return listen<Prefs>('turndock://prefs', (e) => cb(e.payload))
+}
+
+export function onUpdateAvailable(cb: (u: UpdateInfo) => void): Promise<UnlistenFn> {
+  return listen<UpdateInfo>('turndock://update-available', (e) => cb(e.payload))
+}
+
+export function onUpdateProgress(cb: (p: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>('turndock://update-progress', (e) => cb(e.payload))
 }

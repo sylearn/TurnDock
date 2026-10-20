@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: 构建与签名
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: scripts/release.sh
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "回合 ${GITHUB_REF_NAME}" \
+            --notes-file release/NOTES.md \
+            release/TurnDock.app.tar.gz release/TurnDock.app.tar.gz.sig \
+            release/TurnDock_*_universal.dmg release/latest.json \
+            release/install.sh release/SHA256SUMS
+      - name: 更新 Homebrew cask
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f -B main origin/main
+          scripts/cask.sh "${GITHUB_REF_NAME#v}" release/TurnDock.app.tar.gz
+          if ! git diff --quiet -- Casks; then
+            git add Casks/turndock.rb
+            git commit -m "chore: Homebrew cask ${GITHUB_REF_NAME}"
+            git push origin main
+          fi
