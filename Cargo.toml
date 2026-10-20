@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/sylearn/turndock"
+
+[workspace.dependencies]
+turndock-core = { path = "crates/turndock-core" }
+turndock-broker = { path = "crates/turndock-broker" }
+anyhow = "=1.0.104"
+thiserror = "=2.0.21"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+tokio = { version = "=1.54.0", features = ["rt", "rt-multi-thread", "macros", "sync", "time", "net", "io-util", "io-std", "process", "signal"] }
+tokio-util = "0.7"
+uuid = { version = "=1.28.0", features = ["v4"] }
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
+pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+ammonia = "=4.2.4"
+infer = "=0.22.0"
+base64 = "=0.23.1"
+ts-rs = "=12.0.1"
+rmcp = { version = "=3.6.0", default-features = false, features = ["server", "macros", "transport-io"] }
+fastrand = "2"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

@@ -1,0 +1,23 @@
+[package]
+name = "turndock-core"
+description = "回合（TurnDock）领域类型、请求状态机与 IPC 帧定义"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[features]
+ts = ["dep:ts-rs"]
+
+[dev-dependencies]
+fastrand.workspace = true
+
+[lints]
+workspace = true

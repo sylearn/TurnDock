@@ -1,0 +1,40 @@
+[package]
+name = "turndock-broker"
+description = "回合（TurnDock）协调器：请求生命周期、SQLite 存储、本机 IPC 服务"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "turndock-broker"
+path = "src/bin/turndock-broker.rs"
+
+[dependencies]
+turndock-core.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+futures-util = { version = "0.3", features = ["sink"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rusqlite.workspace = true
+pulldown-cmark.workspace = true
+ammonia.workspace = true
+infer.workspace = true
+base64.workspace = true
+uuid.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[features]
+ts = ["dep:ts-rs", "turndock-core/ts"]
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
