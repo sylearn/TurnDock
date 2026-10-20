@@ -206,6 +206,36 @@ impl AskSpec {
         Ok(())
     }
 
+    /// 详情页的标题与正文：显式 title 原样使用；否则当正文首行是普通句子或 Markdown 标题、
+    /// 且不超过 80 字时，把它提出来作为标题，正文去掉这一行，避免重复显示。
+    pub fn heading_and_body(&self) -> (Option<String>, String) {
+        if let Some(t) = &self.title {
+            return (Some(t.clone()), self.message.clone());
+        }
+        let mut lines = self.message.lines();
+        let mut skipped = 0usize;
+        let first = loop {
+            match lines.next() {
+                Some(l) if l.trim().is_empty() => skipped += 1,
+                Some(l) => break l.trim(),
+                None => return (None, self.message.clone()),
+            }
+        };
+        let is_block = first.starts_with(['-', '*', '+', '>', '|', '`'])
+            || first
+                .split_once(". ")
+                .is_some_and(|(n, _)| n.chars().all(|c| c.is_ascii_digit()));
+        let text = first.trim_start_matches('#').trim().replace(['*', '`'], "");
+        if is_block || text.is_empty() || text.chars().count() > 80 {
+            return (None, self.message.clone());
+        }
+        let rest: Vec<&str> = self.message.lines().skip(skipped + 1).collect();
+        (
+            Some(text),
+            rest.join("\n").trim_start_matches('\n').to_owned(),
+        )
+    }
+
     /// 列表中展示的标题：显式 title，否则取正文第一行有内容的文字。
     pub fn display_title(&self) -> String {
         if let Some(t) = &self.title {
@@ -304,6 +334,26 @@ mod tests {
         let mut p = ask(vec![], None);
         p.message = "字".repeat(limits::MESSAGE_BYTES);
         assert_eq!(AskSpec::from_ask_user(p), Err(SpecError::MessageTooLarge));
+    }
+
+    #[test]
+    fn heading_is_lifted_from_plain_first_line_only() {
+        let mk = |m: &str| {
+            let mut p = ask(vec![], None);
+            p.message = m.into();
+            AskSpec::from_ask_user(p).expect("valid")
+        };
+        assert_eq!(
+            mk("要合并吗？").heading_and_body(),
+            (Some("要合并吗？".into()), String::new())
+        );
+        assert_eq!(
+            mk("## 先确认范围\n\n正文").heading_and_body(),
+            (Some("先确认范围".into()), "正文".into())
+        );
+        assert_eq!(mk("- 列表\n- 项").heading_and_body().0, None);
+        assert_eq!(mk("1. 第一步").heading_and_body().0, None);
+        assert_eq!(mk(&"长".repeat(81)).heading_and_body().0, None);
     }
 
     #[test]

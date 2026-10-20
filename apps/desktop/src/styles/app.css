@@ -1,0 +1,260 @@
+/* 回合 · 设计 token 与基础样式。视觉方向见 docs/02-体验设计.md 第 4 节「棋与石」。 */
+
+:root {
+  color-scheme: light;
+  --stone: #eceeea;
+  --sheet: #fafaf8;
+  --ink: #16191a;
+  --ink-2: #555c5a;
+  --rule: #daddd7;
+  --edge: #868c88;
+  --signal: #0e6a60;
+  --signal-ink: #ffffff;
+  --signal-wash: #0e6a6014;
+  --warn: #8a5300;
+  --danger: #b3261e;
+  --shade: 0 12px 40px #16191a1f;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+  --font-note: "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
+  --font-code: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --measure: 720px;
+  --bar: 44px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --stone: #121514;
+  --sheet: #1a1e1d;
+  --ink: #e8ecea;
+  --ink-2: #a3aba8;
+  --rule: #2a302e;
+  --edge: #69716e;
+  --signal: #5fc9b9;
+  --signal-ink: #06201c;
+  --signal-wash: #5fc9b91c;
+  --warn: #e2b05a;
+  --danger: #ff8f86;
+  --shade: 0 12px 40px #00000066;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --stone: #121514;
+    --sheet: #1a1e1d;
+    --ink: #e8ecea;
+    --ink-2: #a3aba8;
+    --rule: #2a302e;
+    --edge: #69716e;
+    --signal: #5fc9b9;
+    --signal-ink: #06201c;
+    --signal-wash: #5fc9b91c;
+    --warn: #e2b05a;
+    --danger: #ff8f86;
+    --shade: 0 12px 40px #00000066;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink);
+  background: var(--stone);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 按钮：三种层级。主按钮只有“发送”。 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--sheet);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--stone);
+}
+.btn:disabled {
+  opacity: 0.45;
+}
+.btn.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-ink);
+  font-weight: 600;
+  padding: 0 16px;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--signal);
+  filter: brightness(1.08);
+}
+.btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+}
+.btn.quiet:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--stone);
+}
+.btn.danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.kbd {
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 来自调用方的消息：已在 Rust 中净化，这里只管排版。 */
+.prose {
+  font-size: 14px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: auto;
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
+  margin-bottom: 0;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose pre,
+.prose table,
+.prose blockquote {
+  margin: 0 0 12px;
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-size: 15px;
+  line-height: 24px;
+  margin: 20px 0 8px;
+  font-weight: 650;
+}
+.prose ul,
+.prose ol {
+  padding-left: 22px;
+}
+.prose li + li {
+  margin-top: 2px;
+}
+.prose li > input[type="checkbox"] {
+  margin: 0 6px 0 -2px;
+  vertical-align: -1px;
+}
+.prose a {
+  color: var(--signal);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.prose code {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--stone);
+}
+.prose pre {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 20px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--stone);
+  overflow-x: auto;
+  max-height: 420px;
+}
+.prose pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+.prose blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--rule);
+  color: var(--ink-2);
+}
+.prose table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--rule);
+  padding: 4px 10px;
+  text-align: left;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 16px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

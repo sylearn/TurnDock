@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 use turndock_core::RequestId;
 
 pub use actor::ActionError;
@@ -46,6 +47,7 @@ impl BrokerConfig {
 pub struct BrokerHandle {
     tx: mpsc::UnboundedSender<Cmd>,
     events: broadcast::Sender<BrokerEvent>,
+    stop: CancellationToken,
 }
 
 /// 在当前 tokio 运行时中启动协调器与 IPC 服务。
@@ -64,9 +66,16 @@ pub async fn spawn(config: BrokerConfig) -> Result<BrokerHandle> {
         events.clone(),
         tx.clone(),
     )?;
-    tokio::spawn(actor.run(rx));
-    tokio::spawn(ipc::serve(listener, owner, tx.clone()));
-    Ok(BrokerHandle { tx, events })
+    let stop = CancellationToken::new();
+    tokio::spawn(actor.run(rx, stop.clone()));
+    tokio::spawn(ipc::serve(
+        listener,
+        owner,
+        config.socket_path.clone(),
+        tx.clone(),
+        stop.clone(),
+    ));
+    Ok(BrokerHandle { tx, events, stop })
 }
 
 /// 在独立线程（单线程运行时）上启动协调器，使数据库写入不占用调用方的运行时。
@@ -98,6 +107,11 @@ pub fn start_thread(config: BrokerConfig) -> Result<BrokerHandle> {
 }
 
 impl BrokerHandle {
+    /// 停止接受连接并断开所有 bridge。已持久化的请求在下次启动时恢复。
+    pub fn shutdown(&self) {
+        self.stop.cancel();
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<BrokerEvent> {
         self.events.subscribe()
     }

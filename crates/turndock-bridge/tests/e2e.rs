@@ -295,3 +295,49 @@ async fn invalid_arguments_are_reported_not_treated_as_answers() {
     );
     c.cancel().await.expect("close");
 }
+
+#[tokio::test]
+async fn broker_restart_is_transparent_to_waiting_call() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let config = BrokerConfig {
+        db_path: Some(dir.path().join("t.db")),
+        socket_path: dir.path().join("run/b.sock"),
+        retention_ms: 60_000,
+        deadline_ms: 3_600_000,
+    };
+    let first = turndock_broker::spawn(config.clone())
+        .await
+        .expect("broker 1");
+    let env = Env {
+        dir,
+        broker: first.clone(),
+    };
+    let c = client(&env, "claude-code", 20).await;
+    let call = c.call_tool(
+        CallToolRequestParams::new("ask_user")
+            .with_arguments(args(json!({ "message": "重启前提的问题" }))),
+    );
+    let restart_and_reply = async {
+        let id = wait_for_request(&env).await;
+        // 模拟桌面应用重启（例如升级）。
+        first.shutdown();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let second = turndock_broker::spawn(config).await.expect("broker 2");
+        let env2 = Env {
+            dir: tempfile::tempdir().expect("tmp"),
+            broker: second.clone(),
+        };
+        // bridge 自动重连并重新挂上同一条请求。
+        let again = wait_for_request(&env2).await;
+        assert_eq!(again, id);
+        second
+            .submit(answer(&id, &[], "重启后也能收到"))
+            .await
+            .expect("submit");
+    };
+    let (r, _) = tokio::join!(call, restart_and_reply);
+    let r = r.expect("call");
+    assert_ne!(r.is_error, Some(true), "{}", text(&r));
+    assert!(text(&r).contains("重启后也能收到"));
+    c.cancel().await.expect("close");
+}

@@ -9,6 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{Framed, LinesCodec};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 use turndock_core::ipc::{BridgeFrame, BrokerFrame, PROTOCOL_VERSION};
 use turndock_core::limits;
@@ -39,10 +40,19 @@ pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, u32)> {
 pub(crate) async fn serve(
     listener: UnixListener,
     owner_uid: u32,
+    socket_path: std::path::PathBuf,
     actor: mpsc::UnboundedSender<Cmd>,
+    stop: CancellationToken,
 ) {
     loop {
-        let stream = match listener.accept().await {
+        let accepted = tokio::select! {
+            a = listener.accept() => a,
+            _ = stop.cancelled() => {
+                let _ = std::fs::remove_file(&socket_path);
+                return;
+            }
+        };
+        let stream = match accepted {
             Ok((s, _)) => s,
             Err(e) => {
                 warn!(error = %e, "accept 失败");
@@ -62,15 +72,20 @@ pub(crate) async fn serve(
             }
         }
         let actor = actor.clone();
+        let stop = stop.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, actor).await {
+            if let Err(e) = handle_connection(stream, actor, stop).await {
                 debug!(error = %e, "连接结束");
             }
         });
     }
 }
 
-async fn handle_connection(stream: UnixStream, actor: mpsc::UnboundedSender<Cmd>) -> Result<()> {
+async fn handle_connection(
+    stream: UnixStream,
+    actor: mpsc::UnboundedSender<Cmd>,
+    stop: CancellationToken,
+) -> Result<()> {
     let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(limits::FRAME_BYTES));
 
     let hello = tokio::time::timeout(HELLO_TIMEOUT, framed.next())
@@ -132,7 +147,14 @@ async fn handle_connection(stream: UnixStream, actor: mpsc::UnboundedSender<Cmd>
     });
 
     let result = async {
-        while let Some(line) = stream.next().await {
+        loop {
+            let line = tokio::select! {
+                l = stream.next() => match l {
+                    Some(l) => l,
+                    None => break,
+                },
+                _ = stop.cancelled() => break,
+            };
             let frame: BridgeFrame = serde_json::from_str(&line?).context("无效帧")?;
             actor
                 .send(Cmd::Frame { conn, frame })

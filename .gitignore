@@ -5,3 +5,4 @@ dist/
 *.log
 .vite/
 coverage/
+apps/desktop/src-tauri/gen/

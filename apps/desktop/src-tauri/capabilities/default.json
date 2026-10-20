@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "收件箱与快速回复面板：只开放本应用的命令与窗口基础能力。",
+  "windows": ["main", "quick"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "allow-snapshot",
+    "allow-detail",
+    "allow-submit",
+    "allow-dismiss",
+    "allow-save-draft",
+    "allow-get-prefs",
+    "allow-set-prefs",
+    "allow-integration",
+    "allow-open-external",
+    "allow-show-inbox",
+    "allow-show-quick",
+    "allow-hide-quick"
+  ]
+}

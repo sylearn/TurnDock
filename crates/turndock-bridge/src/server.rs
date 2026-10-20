@@ -3,6 +3,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, JsonObject,
     ListToolsResult, PaginatedRequestParams, ProgressNotificationParam, ServerCapabilities,
@@ -13,12 +15,17 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::json;
 use tracing::{debug, info};
 use turndock_core::ipc::{BridgeFrame, BrokerFrame, ClientInfo};
-use turndock_core::{AskSpec, AskUserParams, RequestId, ZhiParams};
+use turndock_core::{
+    AskSpec, AskUserParams, CallOutcome, CallResult, RequestId, ToolKind, ZhiParams,
+};
 
 use crate::format;
 use crate::ipc::Ipc;
 
 const PROGRESS_EVERY: Duration = Duration::from_secs(20);
+const RECONNECT_EVERY: Duration = Duration::from_millis(500);
+/// 剩余预算少于此值时直接返回 pending，不再发起新的等待。
+const MIN_WAIT: Duration = Duration::from_millis(1500);
 
 pub const INSTRUCTIONS: &str = "\
 TurnDock（回合）让你在需要用户决定时停下来等待，而不是自作主张或提前结束。
@@ -49,24 +56,17 @@ impl Server {
         wait_budget(&client.name)
     }
 
+    /// 执行一次等待。连接中断时，若已知 request_id，就在等待预算内自动重连并续等，
+    /// 使桌面应用重启对 AI 透明；预算用完则返回 pending。
     async fn run(
         &self,
         ctx: &RequestContext<RoleServer>,
         client: ClientInfo,
+        tool: ToolKind,
         make: impl FnOnce(u64, u64) -> BridgeFrame,
         known_id: Option<RequestId>,
     ) -> CallToolResult {
-        let wait = self.wait_for(&client);
-        let conn = match self.ipc.connection(&client).await {
-            Ok(c) => c,
-            Err(e) => return format::error(format!("{e:#}")),
-        };
-        let (call, mut rx) = conn.register();
-        if let Err(e) = conn.send(make(call, wait.as_millis() as u64)) {
-            conn.finish(call);
-            return format::error(format!("{e:#}"));
-        }
-
+        let deadline = Instant::now() + self.wait_for(&client);
         let heartbeat = ctx.meta.get_progress_token().map(|token| {
             let peer = ctx.peer.clone();
             tokio::spawn(async move {
@@ -85,45 +85,114 @@ impl Server {
         });
 
         let mut request_id = known_id;
-        let result = loop {
-            tokio::select! {
-                frame = rx.recv() => match frame {
-                    Some(BrokerFrame::Created { request_id: id, .. }) => {
-                        debug!(request = %id, "请求已创建");
-                        request_id = Some(id);
-                    }
-                    Some(BrokerFrame::Outcome { request_id: id, outcome, .. }) => {
-                        let is_reply = matches!(outcome.result, turndock_core::CallResult::Reply(_));
-                        let r = format::outcome(&id, outcome);
-                        if is_reply {
-                            // 结果即将交给 MCP 运行时写出。
-                            let _ = conn.send(BridgeFrame::Ack { call });
-                        }
-                        break r;
-                    }
-                    Some(BrokerFrame::Error { message, .. }) => break format::error(message),
-                    Some(_) => {}
-                    None => {
-                        break format::error(match &request_id {
-                            Some(id) => format!(
-                                "与 TurnDock 的连接中断。请求仍然保留，可以调用 await_reply（request_id: {id}）继续等待"
-                            ),
-                            None => "与 TurnDock 的连接中断".into(),
-                        });
-                    }
+        let mut first = Some(make);
+        let pending = |id: &RequestId| {
+            format::outcome(
+                id,
+                CallOutcome {
+                    tool,
+                    result: CallResult::Pending,
                 },
-                _ = ctx.ct.cancelled() => {
-                    info!(call, "调用方取消");
-                    let _ = conn.send(BridgeFrame::Cancel { call });
-                    break format::error("调用已被取消");
+            )
+        };
+
+        let result = 'outer: loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if first.is_none()
+                && remaining < MIN_WAIT
+                && let Some(id) = &request_id
+            {
+                break pending(id);
+            }
+            let conn = match self.ipc.connection(&client).await {
+                Ok(c) => c,
+                Err(e) => match &request_id {
+                    Some(_) if first.is_none() => {
+                        debug!(error = %e, "重连 TurnDock 失败，稍后重试");
+                        if sleep_or_cancel(ctx, RECONNECT_EVERY).await {
+                            break format::error("调用已被取消");
+                        }
+                        continue;
+                    }
+                    _ => break format::error(format!("{e:#}")),
+                },
+            };
+            let (call, mut rx) = conn.register();
+            let wait_ms = remaining.max(MIN_WAIT).as_millis() as u64;
+            let frame = match (first.take(), &request_id) {
+                (Some(make), _) => make(call, wait_ms),
+                (None, Some(id)) => BridgeFrame::Await {
+                    call,
+                    request_id: id.clone(),
+                    wait_ms,
+                },
+                (None, None) => break format::error("与 TurnDock 的连接中断"),
+            };
+            if let Err(e) = conn.send(frame) {
+                conn.finish(call);
+                if request_id.is_some() {
+                    continue;
+                }
+                break format::error(format!("{e:#}"));
+            }
+
+            loop {
+                tokio::select! {
+                    frame = rx.recv() => match frame {
+                        Some(BrokerFrame::Created { request_id: id, .. }) => {
+                            debug!(request = %id, "请求已创建");
+                            request_id = Some(id);
+                        }
+                        Some(BrokerFrame::Outcome { request_id: id, outcome, .. }) => {
+                            let is_reply = matches!(outcome.result, CallResult::Reply(_));
+                            let r = format::outcome(&id, outcome);
+                            if is_reply {
+                                // 结果即将交给 MCP 运行时写出。
+                                let _ = conn.send(BridgeFrame::Ack { call });
+                            }
+                            conn.finish(call);
+                            break 'outer r;
+                        }
+                        Some(BrokerFrame::Error { message, .. }) => {
+                            conn.finish(call);
+                            break 'outer format::error(message);
+                        }
+                        Some(_) => {}
+                        None => {
+                            conn.finish(call);
+                            match &request_id {
+                                Some(id) => {
+                                    info!(request = %id, "与 TurnDock 的连接中断，尝试重连续等");
+                                    if sleep_or_cancel(ctx, RECONNECT_EVERY).await {
+                                        break 'outer format::error("调用已被取消");
+                                    }
+                                    continue 'outer;
+                                }
+                                None => break 'outer format::error("与 TurnDock 的连接中断"),
+                            }
+                        }
+                    },
+                    _ = ctx.ct.cancelled() => {
+                        info!(call, "调用方取消");
+                        let _ = conn.send(BridgeFrame::Cancel { call });
+                        conn.finish(call);
+                        break 'outer format::error("调用已被取消");
+                    }
                 }
             }
         };
         if let Some(h) = heartbeat {
             h.abort();
         }
-        conn.finish(call);
         result
+    }
+}
+
+/// 等待一段时间；期间调用被取消则返回 true。
+async fn sleep_or_cancel(ctx: &RequestContext<RoleServer>, d: Duration) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(d) => false,
+        _ = ctx.ct.cancelled() => true,
     }
 }
 
@@ -264,9 +333,11 @@ impl ServerHandler for Server {
                 .and_then(|p| AskSpec::from_zhi(p).map_err(|e| e.to_string()))
             {
                 Ok(spec) => {
+                    let tool = spec.tool;
                     self.run(
                         &context,
                         client,
+                        tool,
                         |call, wait_ms| BridgeFrame::Ask {
                             call,
                             spec,
@@ -282,9 +353,11 @@ impl ServerHandler for Server {
                 .and_then(|p| AskSpec::from_ask_user(p).map_err(|e| e.to_string()))
             {
                 Ok(spec) => {
+                    let tool = spec.tool;
                     self.run(
                         &context,
                         client,
+                        tool,
                         |call, wait_ms| BridgeFrame::Ask {
                             call,
                             spec,
@@ -309,6 +382,7 @@ impl ServerHandler for Server {
                         self.run(
                             &context,
                             client,
+                            ToolKind::AskUser,
                             move |call, wait_ms| BridgeFrame::Await {
                                 call,
                                 request_id: id,

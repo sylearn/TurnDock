@@ -156,9 +156,19 @@ impl Actor {
         Ok(actor)
     }
 
-    pub(crate) async fn run(mut self, mut rx: mpsc::UnboundedReceiver<Cmd>) {
-        while let Some(cmd) = rx.recv().await {
-            self.handle(cmd);
+    pub(crate) async fn run(
+        mut self,
+        mut rx: mpsc::UnboundedReceiver<Cmd>,
+        stop: tokio_util::sync::CancellationToken,
+    ) {
+        loop {
+            tokio::select! {
+                cmd = rx.recv() => match cmd {
+                    Some(cmd) => self.handle(cmd),
+                    None => break,
+                },
+                _ = stop.cancelled() => break,
+            }
         }
         debug!("协调器退出");
     }
@@ -579,9 +589,11 @@ impl Actor {
         } else {
             None
         };
+        let (heading, body) = row.spec.heading_and_body();
         Some(RequestDetail {
             summary: self.summary(row),
-            message_html: markdown::render(&row.spec.message, row.spec.format),
+            heading,
+            message_html: markdown::render(&body, row.spec.format),
             message_text: row.spec.message.clone(),
             format: row.spec.format,
             options: row.spec.options.clone(),

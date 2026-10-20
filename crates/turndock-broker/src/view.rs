@@ -62,7 +62,9 @@ pub struct Draft {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RequestDetail {
     pub summary: RequestSummary,
-    /// 已净化的 HTML。
+    /// 详情页标题；None 表示正文自带结构，不另起标题。
+    pub heading: Option<String>,
+    /// 已净化的 HTML（已去掉被提为标题的首行）。
     pub message_html: String,
     /// 原文，用于复制。
     pub message_text: String,
