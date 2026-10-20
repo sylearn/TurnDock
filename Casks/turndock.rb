@@ -1,7 +1,7 @@
 # 由 scripts/cask.sh 生成，不要手改。
 cask "turndock" do
   version "0.1.0"
-  sha256 "d6480bd94636b9be6b91af2edbdcea6f312894e30ca2137e73e42ee8b7beb25a"
+  sha256 "084c8861cdaa7a1218849f5804f3a802b24b29056641a56d20a21599821c11d8"
 
   url "https://github.com/sylearn/TurnDock/releases/download/v#{version}/TurnDock.app.tar.gz"
   name "TurnDock"
